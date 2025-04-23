@@ -130,7 +130,7 @@ const App: React.FC = () => {
 
   const handleActionResponse = (response: any) => {
     setActionResponse(response);
-    return { success: "Action processed" };
+    return { success: 'Action processed' };
   };
 
   useEffect(() => {
@@ -193,6 +193,7 @@ const App: React.FC = () => {
               onActionResult={(result) => {
                 return result;
               }}
+              activeLayers={activeLayers}
             />
           </div>
         </div>
