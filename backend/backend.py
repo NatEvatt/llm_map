@@ -371,7 +371,8 @@ def get_action_prompt(action):
     7. ROTATE - Rotate map view (requires "degrees" parameter: number 0-360)
     8. PITCH - Tilt map view (requires "degrees" parameter: number 0-60)
     9. RESET_VIEW - Reset to default view
-    10. HEAT_MAP - Add, update or remove the heat map layer (requires "data" parameter: "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
+    10. HEAT_MAP - Add, update or remove the heat map layer (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
+    11. CLUSTER - Add or remove cluster layer for point data (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
 
     The response must be a JSON object with:
     - "intent": One of the action types in CAPS or "HELP"
@@ -383,6 +384,8 @@ def get_action_prompt(action):
     - "go to London" -> {{"intent": "FLY_TO", "parameters": {{"lng": -0.1276, "lat": 51.5074}}}}
     - "rotate 90 degrees" -> {{"intent": "ROTATE", "parameters": {{"degrees": 90}}}}
     - "add heat map" -> {{"intent": "HEAT_MAP", "parameters": {{"action": "ADD", "layer": "fountains"}}}}
+    - "add cluster layer" -> {{"intent": "CLUSTER", "parameters": {{"action": "ADD", "layer": "fountains"}}}}
+    - "remove cluster layer" -> {{"intent": "CLUSTER", "parameters": {{"action": "REMOVE", "layer": "fountains"}}}}
     - "what can I do?" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
     - "show me available actions" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
 
