@@ -45,9 +45,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onClearFilter,
   onActionResponse,
 }) => {
-  const [activeTab, setActiveTab] = useState<'search' | 'saved' | 'layers' | 'actions'>(
-    'search',
-  );
+  const [activeTab, setActiveTab] = useState<
+    'search' | 'saved' | 'layers' | 'actions'
+  >('search');
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -102,7 +102,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
   };
 
   return (
-    <div style={{ width: '400px', borderLeft: '1px solid #ddd' }}>
+    <div>
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd' }}>
         <TabButton
           label="Search"
@@ -126,7 +126,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
         />
       </div>
 
-      <div style={{ padding: '16px' }}>
+      <div style={{ paddingTop: '16px' }}>
         {activeTab === 'search' ? (
           <ChatInput
             message={message}
@@ -149,9 +149,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
             onClearFilter={onClearFilter}
           />
         ) : (
-          <Actions 
-          onActionResponse={onActionResponse}
-          />
+          <Actions onActionResponse={onActionResponse} />
         )}
       </div>
     </div>

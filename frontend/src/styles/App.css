@@ -15,7 +15,6 @@ h1 {
 
 .container {
   display: flex; /* Make the columns horizontal */
-  gap: 20px; /* Add space between columns */
   flex: 1; /* Allow the container to stretch vertically */
   height: 100%; /* Ensure the container stretches to full height */
 }
@@ -33,19 +32,12 @@ main {
 
 .column.left {
   flex: 1; /* The left column takes 1 part of the available space */
-  background-color: #f1f1f1; /* Optional: Add a background color for clarity */
   height: 100%; /* Ensure the column stretches to full height */
 }
 
 .column.right {
   flex: 3; /* The right column takes 3 parts of the available space */
-  background-color: #e9ecef; /* Optional: Add a background color for clarity */
   height: 100%; /* Ensure the column stretches to full height */
-}
-
-.map-container {
-  width: 100%;
-  height: 100%;
 }
 
 .button {
