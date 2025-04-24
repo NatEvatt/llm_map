@@ -4,6 +4,7 @@ from backend_constants import LAYER_COLUMNS
 import psycopg2
 import json
 import requests
+from requests.auth import HTTPBasicAuth
 from geojson import Feature, FeatureCollection
 import re
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +33,8 @@ DB_CONFIG = {
 }
 
 OLLAMA_CONFIG = {
-    "url": f"http://{os.environ.get('OLLAMA_HOST')}:{os.environ.get('OLLAMA_PORT')}",
+    "url": f"{os.environ.get('OLLAMA_HOST')}",
+    "auth": HTTPBasicAuth(os.environ.get('OLLAMA_USERNAME'), os.environ.get('OLLAMA_PASSWORD')),
     "model": os.environ.get('LLM_MODEL')
 }
 
@@ -165,7 +167,7 @@ def natural_language_to_sql(nl_query):
     """Convert NL query to SQL using a local Ollama LLM."""
     prompt = get_sql_prompt(nl_query)
     ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"  
-    response = requests.post(ollama_url, json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False})
+    response = requests.post(ollama_url, auth=OLLAMA_CONFIG["auth"] ,json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False})
     
     if response.status_code == 200:
         match = re.search(r"SELECT.*?;", response.text, re.DOTALL)
@@ -248,7 +250,7 @@ def test_ollama():
     print('This is a test prompt for {}'.format(OLLAMA_CONFIG['model']))
     ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"  # Use the service name defined in docker-compose.yml
     prompt = "tell me a short story about a boy name Sue"
-    response = requests.post(ollama_url, json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False})
+    response = requests.post(ollama_url, auth=OLLAMA_CONFIG["auth"], json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False})
     
     if response.status_code == 200:
         return response.json()
@@ -398,7 +400,7 @@ async def process_map_action(action: str = Query(..., description="Natural langu
     try:
         prompt = get_action_prompt(action)
         ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"  # Ollama runs locally
-        response = requests.post(ollama_url, json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False})
+        response = requests.post(ollama_url, auth=OLLAMA_CONFIG["auth"], json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False})
     
         if response.status_code != 200:
             raise HTTPException(status_code=500, detail="Failed to process action with Ollama")
