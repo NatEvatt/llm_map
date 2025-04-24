@@ -1,21 +1,19 @@
 export class ApiCalls {
   static getAPIUrl() {
-    const apiUrl = process.env.BACKEND_URL + ':' + process.env.BACKEND_EXTERNAL_PORT;
+    const apiUrl =
+      process.env.BACKEND_URL + ':' + process.env.BACKEND_EXTERNAL_PORT;
     return apiUrl;
   }
 
   static async fetchNLQueryIds(nlQuery: string) {
     const urlSafeMessage = encodeURIComponent(nlQuery);
     const apiUrl = ApiCalls.getAPIUrl();
-    const response = await fetch(
-      `${apiUrl}/query?nl_query=${urlSafeMessage}`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+    const response = await fetch(`${apiUrl}/query?nl_query=${urlSafeMessage}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
       },
-    );
+    });
 
     if (!response.ok) {
       throw new Error('Network response was not ok');
@@ -71,12 +69,9 @@ export class ApiCalls {
 
   static async deleteSavedQuery(id: number): Promise<void> {
     const apiUrl = ApiCalls.getAPIUrl();
-    const response = await fetch(
-      `${apiUrl}/delete-saved-query/${id}`,
-      {
-        method: 'DELETE',
-      },
-    );
+    const response = await fetch(`${apiUrl}/delete-saved-query/${id}`, {
+      method: 'DELETE',
+    });
     if (!response.ok) {
       throw new Error('Failed to delete saved query');
     }
@@ -84,9 +79,7 @@ export class ApiCalls {
 
   static async loadSavedQuery(id: number) {
     const apiUrl = ApiCalls.getAPIUrl();
-    const response = await fetch(
-      `${apiUrl}/load-saved-query/${id}`,
-    );
+    const response = await fetch(`${apiUrl}/load-saved-query/${id}`);
     if (!response.ok) {
       throw new Error('Failed to load saved query');
     }
@@ -99,7 +92,7 @@ export class ApiCalls {
     const response = await fetch(
       `${apiUrl}/api/actions?action=${urlSafeAction}`,
       {
-        method: 'POST',
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
