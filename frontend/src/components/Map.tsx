@@ -11,6 +11,7 @@ interface MapProps {
   geoJsonData: Record<string, any>; // A map of layer names to GeoJSON data
   actionResponse: any;
   onActionResult: (result: { error?: string; success?: string }) => void;
+  activeLayers: Record<string, boolean>; // Add activeLayers prop
 }
 
 const Map: React.FC<MapProps> = ({
@@ -21,6 +22,7 @@ const Map: React.FC<MapProps> = ({
   geoJsonData,
   actionResponse,
   onActionResult,
+  activeLayers,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -288,12 +290,30 @@ const Map: React.FC<MapProps> = ({
 
     Object.keys(geoJsonData).forEach((layerName) => {
       if (mapRef.current && mapRef.current.getSource(layerName)) {
+        // Update the layer visibility based on activeLayers
+        const layer = mapRef.current.getLayer(layerName);
+        if (layer && mapRef.current) {
+          mapRef.current.setLayoutProperty(
+            layerName,
+            'visibility',
+            activeLayers[layerName] ? 'visible' : 'none',
+          );
+        }
+        // Update the data
         (
           mapRef.current.getSource(layerName) as maplibregl.GeoJSONSource
         ).setData(geoJsonData[layerName]);
       } else {
         addSourceAndLayer(layerName, geoJsonData[layerName]);
         addPopupToLayer(layerName);
+        // Set initial visibility
+        if (mapRef.current && mapRef.current.getLayer(layerName)) {
+          mapRef.current.setLayoutProperty(
+            layerName,
+            'visibility',
+            activeLayers[layerName] ? 'visible' : 'none',
+          );
+        }
       }
     });
   };
@@ -545,7 +565,7 @@ const Map: React.FC<MapProps> = ({
 
   useEffect(() => {
     updateMapLayers();
-  }, [geoJsonData]);
+  }, [geoJsonData, activeLayers]);
 
   useEffect(() => {
     if (actionResponse) {
