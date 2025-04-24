@@ -491,7 +491,7 @@ const Map: React.FC<MapProps> = ({
   // Function to handle map actions
   const handleMapAction = (response: any) => {
     if (response && response.action && mapRef.current) {
-      const { intent, parameters } = response.action;
+      const { intent, parameters, restore_original } = response.action;
       let result = {};
 
       switch (intent) {
@@ -545,6 +545,14 @@ const Map: React.FC<MapProps> = ({
           break;
         case 'CLUSTER':
           result = handleClusterAction(parameters);
+          // If there's a restore_original field, add the original layer back
+          if (restore_original) {
+            const { layer } = restore_original;
+            if (geoJsonData && geoJsonData[layer]) {
+              addSourceAndLayer(layer, geoJsonData[layer]);
+              addPopupToLayer(layer);
+            }
+          }
           break;
         default:
           result = { error: `Unknown action intent: ${intent}` };
