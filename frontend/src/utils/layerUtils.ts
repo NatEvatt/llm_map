@@ -1,18 +1,39 @@
 import maplibregl from 'maplibre-gl';
 
+// Add these new utility functions right here
+const generateRandomColor = (): string => {
+  const hue = Math.random() * 360;
+  const saturation = 70 + Math.random() * 30; // 70-100% saturation
+  const lightness = 45 + Math.random() * 10; // 45-55% lightness
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+};
+
+// Cache for storing layer colors
+const layerColors: Record<string, { main: string; stroke: string }> = {};
+
+// Function to get or generate colors for a layer
+const getLayerColors = (layerId: string) => {
+  if (!layerColors[layerId]) {
+    const mainColor = generateRandomColor();
+    layerColors[layerId] = { main: mainColor, stroke: '#FFFFFF' };
+  }
+  return layerColors[layerId];
+};
+
 // Function to add a point layer (circle layer)
 export const addPointLayer = (map: maplibregl.Map, layerId: string) => {
   if (!map) return;
 
+  const colors = getLayerColors(layerId);
   map.addLayer({
     id: layerId,
     type: 'circle',
     source: layerId,
     paint: {
       'circle-radius': 6,
-      'circle-color': '#FF0000', // Red color for points
+      'circle-color': colors.main,
       'circle-stroke-width': 1,
-      'circle-stroke-color': '#FFFFFF', // White border
+      'circle-stroke-color': colors.stroke,
     },
   });
 };
@@ -21,12 +42,13 @@ export const addPointLayer = (map: maplibregl.Map, layerId: string) => {
 export const addPolygonLayer = (map: maplibregl.Map, layerId: string) => {
   if (!map) return;
 
+  const colors = getLayerColors(layerId);
   map.addLayer({
     id: layerId,
     type: 'fill',
     source: layerId,
     paint: {
-      'fill-color': '#0000FF', // Blue color for polygons
+      'fill-color': colors.main,
       'fill-opacity': 0.4,
     },
   });
@@ -36,14 +58,15 @@ export const addPolygonLayer = (map: maplibregl.Map, layerId: string) => {
 export const addLineLayer = (map: maplibregl.Map, layerId: string) => {
   if (!map) return;
 
+  const colors = getLayerColors(layerId);
   map.addLayer({
     id: layerId,
     type: 'line',
     source: layerId,
     paint: {
-      'line-color': '#eb09eb', // Green color for the line
-      'line-width': 3, // Line width
-      'line-opacity': 0.8, // Line opacity
+      'line-color': colors.main,
+      'line-width': 3,
+      'line-opacity': 0.8,
     },
   });
 };
