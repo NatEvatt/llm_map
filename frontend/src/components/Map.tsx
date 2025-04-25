@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import '../styles/Map.css';
 import { ApiCalls } from '../utils/apiCalls';
+import { handleClusterAction } from '../utils/clusterUtils';
 
 interface MapProps {
   lat: number;
@@ -318,176 +319,6 @@ const Map: React.FC<MapProps> = ({
     });
   };
 
-  // Add cluster layer to the map
-  const addClusterLayer = (layerId: string, data: any) => {
-    if (!mapRef.current) return;
-
-    // Remove any existing layers and source for this layerId
-    const layers = [
-      layerId,
-      `${layerId}-clusters`,
-      `${layerId}-cluster-count`,
-      `${layerId}-unclustered-point`,
-    ];
-
-    layers.forEach((layer) => {
-      if (mapRef.current?.getLayer(layer)) {
-        mapRef.current.removeLayer(layer);
-      }
-    });
-
-    if (mapRef.current.getSource(layerId)) {
-      mapRef.current.removeSource(layerId);
-    }
-
-    // Add the GeoJSON source with cluster properties
-    mapRef.current.addSource(layerId, {
-      type: 'geojson',
-      data: data,
-      cluster: true,
-      clusterMaxZoom: 14,
-      clusterRadius: 50,
-    });
-
-    // Add the cluster layer
-    mapRef.current.addLayer({
-      id: `${layerId}-clusters`,
-      type: 'circle',
-      source: layerId,
-      filter: ['has', 'point_count'],
-      paint: {
-        'circle-color': [
-          'step',
-          ['get', 'point_count'],
-          '#51bbd6',
-          100,
-          '#f1f075',
-          750,
-          '#f28cb1',
-        ],
-        'circle-radius': ['step', ['get', 'point_count'], 20, 100, 30, 750, 40],
-      },
-    });
-
-    // Add the cluster count layer
-    mapRef.current.addLayer({
-      id: `${layerId}-cluster-count`,
-      type: 'symbol',
-      source: layerId,
-      filter: ['has', 'point_count'],
-      layout: {
-        'text-field': '{point_count_abbreviated}',
-        'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
-        'text-size': 12,
-      },
-    });
-
-    // Add the unclustered point layer
-    mapRef.current.addLayer({
-      id: `${layerId}-unclustered-point`,
-      type: 'circle',
-      source: layerId,
-      filter: ['!', ['has', 'point_count']],
-      paint: {
-        'circle-color': '#11b4da',
-        'circle-radius': 8,
-        'circle-stroke-width': 1,
-        'circle-stroke-color': '#fff',
-      },
-    });
-
-    // Add click handler for clusters
-    mapRef.current.on('click', `${layerId}-clusters`, (e) => {
-      const features = mapRef.current?.queryRenderedFeatures(e.point, {
-        layers: [`${layerId}-clusters`],
-      });
-      if (features?.[0] && mapRef.current) {
-        mapRef.current.easeTo({
-          center: (features[0].geometry as any).coordinates,
-          zoom: mapRef.current.getZoom() + 1,
-        });
-      }
-    });
-
-    // Change cursor to pointer on hover
-    mapRef.current.on('mouseenter', `${layerId}-clusters`, () => {
-      if (mapRef.current) {
-        mapRef.current.getCanvas().style.cursor = 'pointer';
-      }
-    });
-
-    mapRef.current.on('mouseleave', `${layerId}-clusters`, () => {
-      if (mapRef.current) {
-        mapRef.current.getCanvas().style.cursor = '';
-      }
-    });
-  };
-
-  // Remove cluster layer from the map
-  const removeClusterLayer = (layerId: string) => {
-    if (!mapRef.current) return;
-
-    const layers = [
-      `${layerId}-clusters`,
-      `${layerId}-cluster-count`,
-      `${layerId}-unclustered-point`,
-    ];
-
-    layers.forEach((layer) => {
-      if (mapRef.current?.getLayer(layer)) {
-        mapRef.current.removeLayer(layer);
-      }
-    });
-
-    if (mapRef.current.getSource(layerId)) {
-      mapRef.current.removeSource(layerId);
-    }
-  };
-
-  // Define action handlers for cluster operations
-  const clusterActionHandlers: Record<
-    string,
-    (
-      map: maplibregl.Map,
-      layerId: string,
-      layerData: any,
-    ) => { error?: string; success?: string }
-  > = {
-    ADD: (map, layerId, layerData) => {
-      addClusterLayer(layerId, layerData);
-      return { success: 'Cluster layer added successfully' };
-    },
-    REMOVE: (map, layerId) => {
-      removeClusterLayer(layerId);
-      return { success: 'Cluster layer removed successfully' };
-    },
-  };
-
-  const handleClusterAction = (parameters: {
-    action: string;
-    layer: string;
-  }) => {
-    if (!mapRef.current) return { error: 'Map not initialized' };
-
-    if (!geoJsonData[parameters.layer]) {
-      const pointLayers = getPointLayers(geoJsonData);
-      return {
-        error: `Layer "${parameters.layer}" does not exist. Available point layers: ${pointLayers.join(', ')}`,
-      };
-    }
-
-    const handler = clusterActionHandlers[parameters.action];
-    if (!handler) {
-      return { error: `Invalid action: ${parameters.action}` };
-    }
-
-    return handler(
-      mapRef.current,
-      parameters.layer,
-      geoJsonData[parameters.layer],
-    );
-  };
-
   // Function to handle map actions
   const handleMapAction = (response: any) => {
     if (response && response.action && mapRef.current) {
@@ -544,7 +375,7 @@ const Map: React.FC<MapProps> = ({
           result = handleHeatMapAction(parameters);
           break;
         case 'CLUSTER':
-          result = handleClusterAction(parameters);
+          result = handleClusterAction(mapRef.current, parameters, geoJsonData);
           // If there's a restore_original field, add the original layer back
           if (restore_original) {
             const { layer } = restore_original;
