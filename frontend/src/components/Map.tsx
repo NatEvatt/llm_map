@@ -3,6 +3,7 @@ import maplibregl from 'maplibre-gl';
 import '../styles/Map.css';
 import { ApiCalls } from '../utils/apiCalls';
 import { handleClusterAction } from '../utils/clusterUtils';
+import { handleHeatMapAction } from '../utils/heatmapUtils';
 
 interface MapProps {
   lat: number;
@@ -96,39 +97,6 @@ const Map: React.FC<MapProps> = ({
     });
   };
 
-  const addHeatMapLayer = (layerId: string) => {
-    if (!mapRef.current) return;
-
-    mapRef.current.addLayer({
-      id: layerId,
-      type: 'heatmap',
-      source: layerId,
-      paint: {
-        'heatmap-weight': 1,
-        'heatmap-intensity': 1,
-        'heatmap-color': [
-          'interpolate',
-          ['linear'],
-          ['heatmap-density'],
-          0,
-          'rgba(0, 0, 255, 0)',
-          0.2,
-          'royalblue',
-          0.4,
-          'cyan',
-          0.6,
-          'lime',
-          0.8,
-          'yellow',
-          1,
-          'red',
-        ],
-        'heatmap-radius': 30,
-        'heatmap-opacity': 0.8,
-      },
-    });
-  };
-
   const getPointLayers = (data: Record<string, any>): string[] => {
     return Object.entries(data)
       .filter(([_, layerData]) => {
@@ -136,76 +104,6 @@ const Map: React.FC<MapProps> = ({
         return firstFeature?.geometry?.type === 'Point';
       })
       .map(([name]) => name);
-  };
-
-  // Define action handlers for heat map operations
-  const heatMapActionHandlers: Record<
-    string,
-    (
-      map: maplibregl.Map,
-      layerExists: boolean,
-      sourceExists: boolean,
-      layerData: any,
-    ) => { error?: string; success?: string }
-  > = {
-    REMOVE: (map, layerExists, sourceExists) => {
-      if (layerExists) map.removeLayer('heatmap');
-      if (sourceExists) map.removeSource('heatmap');
-      return { success: 'Heat map removed successfully' };
-    },
-    ADD: (map, _, sourceExists, layerData) => {
-      if (sourceExists) {
-        (map.getSource('heatmap') as maplibregl.GeoJSONSource).setData(
-          layerData,
-        );
-      } else {
-        map.addSource('heatmap', {
-          type: 'geojson',
-          data: layerData,
-        });
-        addHeatMapLayer('heatmap');
-      }
-      return { success: 'Heat map added successfully' };
-    },
-    UPDATE: (map, _, sourceExists, layerData) => {
-      if (sourceExists) {
-        (map.getSource('heatmap') as maplibregl.GeoJSONSource).setData(
-          layerData,
-        );
-        return { success: 'Heat map updated successfully' };
-      }
-      return { error: 'Cannot update heat map: source does not exist' };
-    },
-  };
-
-  const handleHeatMapAction = (parameters: {
-    action: string;
-    layer: string;
-  }) => {
-    if (!mapRef.current) return { error: 'Map not initialized' };
-
-    const { current: map } = mapRef;
-    const sourceExists = !!map.getSource('heatmap');
-    const layerExists = !!map.getLayer('heatmap');
-
-    if (!geoJsonData[parameters.layer]) {
-      const pointLayers = getPointLayers(geoJsonData);
-      return {
-        error: `Layer "${parameters.layer}" does not exist. Available point layers: ${pointLayers.join(', ')}`,
-      };
-    }
-
-    const handler = heatMapActionHandlers[parameters.action];
-    if (!handler) {
-      return { error: `Invalid action: ${parameters.action}` };
-    }
-
-    return handler(
-      map,
-      layerExists,
-      sourceExists,
-      geoJsonData[parameters.layer],
-    );
   };
 
   // Mapping of geometry types to their corresponding layer functions
@@ -372,7 +270,7 @@ const Map: React.FC<MapProps> = ({
           result = { success: 'Reset view to default' };
           break;
         case 'HEAT_MAP':
-          result = handleHeatMapAction(parameters);
+          result = handleHeatMapAction(mapRef.current, parameters, geoJsonData);
           break;
         case 'CLUSTER':
           result = handleClusterAction(mapRef.current, parameters, geoJsonData);
