@@ -38,6 +38,8 @@ OLLAMA_CONFIG = {
     "model": os.environ.get('LLM_MODEL')
 }
 
+CLUSTER_STATE = {}  # Track which layers have cluster versions
+
 def query_postgis(sql_query):
     """Execute SQL query and return GeoJSON."""
     conn = psycopg2.connect(**DB_CONFIG)
@@ -86,6 +88,12 @@ def get_sql_prompt(nl_query):
        - `surface` (TEXT, NULL)
        - `geom` (GEOMETRY, NULL)
 
+    ### Important Notes
+    - There are NO foreign key relationships between tables (no park_id, fountain_id, etc.)
+    - To find relationships between features (e.g., fountains inside parks), use spatial functions like ST_Within
+    - For counting features inside other features, use subqueries with spatial joins
+    - When counting features inside other features, use GROUP BY on the containing feature's ID
+
     ### Query Requirements
     - Ensure **all string comparisons are case-insensitive**.
     - If the query involves spatial relationships (e.g., "inside," "within," "near"), use appropriate PostGIS functions like `ST_Within` or `ST_Intersects`.
@@ -117,10 +125,10 @@ def get_sql_prompt(nl_query):
     - Find all fountains inside parks (if geometries are in the same SRID): 
       ```sql
       -- primary_layer: fountains
-      SELECT fountains.id
-      FROM layers.fountains
-      JOIN layers.parks
-      ON ST_Within(fountains.geom, parks.geom);
+      SELECT f.id
+      FROM layers.fountains AS f
+      JOIN layers.parks AS p
+      ON ST_Within(f.geom, p.geom);
       ```
     - Find all fountains inside parks: 
       ```sql
@@ -136,21 +144,20 @@ def get_sql_prompt(nl_query):
 
     - Find all cycle paths that intersect parks:
       ```sql
-      SELECT DISTINCT cycle_paths.id
-      FROM layers.cycle_paths
-      JOIN layers.parks
-      ON ST_Intersects(cycle_paths.geom, parks.geom);
-
+      -- primary_layer: cycle_paths
+      SELECT DISTINCT c.id
+      FROM layers.cycle_paths AS c
+      JOIN layers.parks AS p
+      ON ST_Intersects(c.geom, p.geom);
+      ```
     - Find all fountains inside parks with a specific name:
       ```sql
-      SELECT fountains.id
-      FROM layers.fountains
-      JOIN layers.parks
-      ON ST_Intersects(
-          fountains.geom,
-          parks.geom
-      )
-      WHERE parks.name = 'Kensington Gardens';
+      -- primary_layer: fountains
+      SELECT f.id
+      FROM layers.fountains AS f
+      JOIN layers.parks AS p
+      ON ST_Within(f.geom, p.geom)
+      WHERE p.name ILIKE 'Kensington Gardens';
       ```
 
     ### Input
@@ -373,7 +380,8 @@ def get_action_prompt(action):
     7. ROTATE - Rotate map view (requires "degrees" parameter: number 0-360)
     8. PITCH - Tilt map view (requires "degrees" parameter: number 0-60)
     9. RESET_VIEW - Reset to default view
-    10. HEAT_MAP - Add, update or remove the heat map layer (requires "data" parameter: "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
+    10. HEAT_MAP - Add, update or remove the heat map layer (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
+    11. CLUSTER - Add or remove cluster layer for point data (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
 
     The response must be a JSON object with:
     - "intent": One of the action types in CAPS or "HELP"
@@ -385,6 +393,8 @@ def get_action_prompt(action):
     - "go to London" -> {{"intent": "FLY_TO", "parameters": {{"lng": -0.1276, "lat": 51.5074}}}}
     - "rotate 90 degrees" -> {{"intent": "ROTATE", "parameters": {{"degrees": 90}}}}
     - "add heat map" -> {{"intent": "HEAT_MAP", "parameters": {{"action": "ADD", "layer": "fountains"}}}}
+    - "add cluster layer" -> {{"intent": "CLUSTER", "parameters": {{"action": "ADD", "layer": "fountains"}}}}
+    - "remove cluster layer" -> {{"intent": "CLUSTER", "parameters": {{"action": "REMOVE", "layer": "fountains"}}}}
     - "what can I do?" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
     - "show me available actions" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
 
@@ -394,9 +404,8 @@ def get_action_prompt(action):
     """
     return prompt
 
-@app.post("/api/actions")
+@app.get("/api/actions")
 async def process_map_action(action: str = Query(..., description="Natural language map action")):
-
     try:
         prompt = get_action_prompt(action)
         ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"  # Ollama runs locally
@@ -407,11 +416,36 @@ async def process_map_action(action: str = Query(..., description="Natural langu
 
         # Parse the response
         response_data = response.json()
-        action_json = json.loads(response_data["response"])
+        
+        # Clean up the response by removing markdown code block syntax
+        cleaned_response = response_data["response"].replace("```json", "").replace("```", "").strip()
+        print("Cleaned response:", cleaned_response)
+        
+        action_json = json.loads(cleaned_response)
+        print("Parsed action JSON:", action_json)
+        
+        # Handle cluster layer state
+        if action_json.get("intent") == "CLUSTER":
+            layer = action_json.get("parameters", {}).get("layer")
+            cluster_action = action_json.get("parameters", {}).get("action")
+            
+            if cluster_action == "ADD":
+                # Store that this layer has a cluster version
+                CLUSTER_STATE[layer] = True
+            elif cluster_action == "REMOVE":
+                # Remove the cluster state and indicate we should restore the original layer
+                CLUSTER_STATE[layer] = False
+                # Add a new action to restore the original layer
+                action_json["restore_original"] = {
+                    "layer": layer,
+                    "action": "ADD"
+                }
         
         return MapActionResponse(
             response=f"I'll help you with that: {action}",
             action=action_json
         )
     except Exception as e:
+        print(f"Error processing action: {str(e)}")
+        print(f"Error type: {type(e)}")
         raise HTTPException(status_code=500, detail=str(e))
