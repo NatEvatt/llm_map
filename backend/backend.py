@@ -17,7 +17,7 @@ app = FastAPI()
 # Allow CORS for your frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[f"{os.environ.get('FRONTEND_URL')}:{os.environ.get('FRONTEND_EXTERNAL_PORT')}"],
+    allow_origins=[f"{os.environ.get('FRONTEND_URL')}"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

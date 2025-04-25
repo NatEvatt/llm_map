@@ -1,7 +1,7 @@
 export class ApiCalls {
   static getAPIUrl() {
     const apiUrl =
-      process.env.BACKEND_URL + ':' + process.env.BACKEND_EXTERNAL_PORT;
+      process.env.BACKEND_URL;
     return apiUrl;
   }
 

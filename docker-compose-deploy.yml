@@ -1,0 +1,47 @@
+services:
+  db:
+    build: ./database
+    container_name: db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "$DB_EXTERNAL_PORT:5432"
+
+  backend:
+    build: ./backend
+    container_name: backend
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      LLM_MODEL: $LLM_MODEL
+      FRONTEND_URL: $FRONTEND_URL
+      FRONTEND_EXTERNAL_PORT: $FRONTEND_EXTERNAL_PORT
+      OLLAMA_HOST: $OLLAMA_HOST
+      OLLAMA_USERNAME: $OLLAMA_USERNAME
+      OLLAMA_PASSWORD: $OLLAMA_PASSWORD
+    ports:
+      - "$BACKEND_EXTERNAL_PORT:8001"
+    depends_on:
+      - db
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "$FRONTEND_EXTERNAL_PORT:9001"
+    environment:
+      BACKEND_URL: $BACKEND_URL
+      BACKEND_EXTERNAL_PORT: $BACKEND_EXTERNAL_PORT
+      MAPTILER_API_KEY: $MAPTILER_API_KEY
+    depends_on:
+      - backend
+
+volumes:
+  db-data:
