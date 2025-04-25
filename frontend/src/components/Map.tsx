@@ -4,6 +4,11 @@ import '../styles/Map.css';
 import { ApiCalls } from '../utils/apiCalls';
 import { handleClusterAction } from '../utils/clusterUtils';
 import { handleHeatMapAction } from '../utils/heatmapUtils';
+import {
+  addSourceAndLayer,
+  addPopupToLayer,
+  updateMapLayers,
+} from '../utils/layerUtils';
 
 interface MapProps {
   lat: number;
@@ -43,177 +48,13 @@ const Map: React.FC<MapProps> = ({
     mapRef.current.on('load', () => {
       // Add all layers dynamically
       Object.keys(geoJsonData).forEach((layerName) => {
-        addSourceAndLayer(layerName, geoJsonData[layerName]);
-        addPopupToLayer(layerName);
-      });
-    });
-  };
-
-  // Function to add a point layer (circle layer)
-  const addPointLayer = (layerId: string) => {
-    if (!mapRef.current) return;
-
-    mapRef.current.addLayer({
-      id: layerId,
-      type: 'circle',
-      source: layerId,
-      paint: {
-        'circle-radius': 6,
-        'circle-color': '#FF0000', // Red color for points
-        'circle-stroke-width': 1,
-        'circle-stroke-color': '#FFFFFF', // White border
-      },
-    });
-  };
-
-  // Function to add a polygon layer (fill layer)
-  const addPolygonLayer = (layerId: string) => {
-    if (!mapRef.current) return;
-
-    mapRef.current.addLayer({
-      id: layerId,
-      type: 'fill',
-      source: layerId,
-      paint: {
-        'fill-color': '#0000FF', // Blue color for polygons
-        'fill-opacity': 0.4,
-      },
-    });
-  };
-
-  // Function to add a line layer
-  const addLineLayer = (layerId: string) => {
-    if (!mapRef.current) return;
-
-    mapRef.current.addLayer({
-      id: layerId,
-      type: 'line',
-      source: layerId,
-      paint: {
-        'line-color': '#eb09eb', // Green color for the line
-        'line-width': 3, // Line width
-        'line-opacity': 0.8, // Line opacity
-      },
-    });
-  };
-
-  const getPointLayers = (data: Record<string, any>): string[] => {
-    return Object.entries(data)
-      .filter(([_, layerData]) => {
-        const firstFeature = layerData.features?.[0];
-        return firstFeature?.geometry?.type === 'Point';
-      })
-      .map(([name]) => name);
-  };
-
-  // Mapping of geometry types to their corresponding layer functions
-  const geometryTypeToLayerFunction: Record<string, (layerId: string) => void> =
-    {
-      Point: addPointLayer,
-      Polygon: addPolygonLayer,
-      MultiPolygon: addPolygonLayer,
-      LineString: addLineLayer,
-      MultiLineString: addLineLayer,
-    };
-
-  // Function to add a source and layer dynamically
-  const addSourceAndLayer = (layerId: string, data: any) => {
-    if (!mapRef.current) return;
-
-    // Add the GeoJSON source
-    if (!mapRef.current.getSource(layerId)) {
-      mapRef.current.addSource(layerId, {
-        type: 'geojson',
-        data: data,
-      });
-    }
-
-    // Determine the layer type dynamically based on the first feature's geometry type
-    const firstFeature = data.features?.[0];
-    const geometryType = firstFeature?.geometry?.type;
-
-    // Add the layer with appropriate styling if it doesn't exist
-    if (!mapRef.current.getLayer(layerId) && geometryType) {
-      const layerFunction = geometryTypeToLayerFunction[geometryType];
-      if (layerFunction) {
-        layerFunction(layerId);
-      } else {
-        console.warn(`Unsupported geometry type: ${geometryType}`);
-      }
-    }
-  };
-
-  // Function to add a popup to a layer
-  const addPopupToLayer = (layerId: string) => {
-    if (!mapRef.current) return;
-
-    mapRef.current.on('click', layerId, async (e) => {
-      const features = e.features;
-      if (features && features.length > 0) {
-        const properties = await ApiCalls.getLayerPopupProperties(
-          layerId,
-          features[0].properties.id,
+        addSourceAndLayer(mapRef.current!, layerName, geoJsonData[layerName]);
+        addPopupToLayer(
+          mapRef.current!,
+          layerName,
+          ApiCalls.getLayerPopupProperties,
         );
-        const coordinates = e.lngLat;
-
-        // Create popup content from properties
-        const popupContent = Object.entries(properties)
-          .map(([key, value]) => `<strong>${key}:</strong> ${value}`)
-          .join('<br>');
-
-        // Display the popup
-        new maplibregl.Popup()
-          .setLngLat(coordinates)
-          .setHTML(popupContent)
-          .addTo(mapRef.current!);
-      }
-    });
-
-    // Change cursor to pointer on hover
-    mapRef.current.on('mouseenter', layerId, () => {
-      if (mapRef.current) {
-        mapRef.current.getCanvas().style.cursor = 'pointer';
-      }
-    });
-
-    mapRef.current.on('mouseleave', layerId, () => {
-      if (mapRef.current) {
-        mapRef.current.getCanvas().style.cursor = '';
-      }
-    });
-  };
-
-  // Function to update the GeoJSON layers dynamically
-  const updateMapLayers = () => {
-    if (!mapRef.current) return;
-
-    Object.keys(geoJsonData).forEach((layerName) => {
-      if (mapRef.current && mapRef.current.getSource(layerName)) {
-        // Update the layer visibility based on activeLayers
-        const layer = mapRef.current.getLayer(layerName);
-        if (layer && mapRef.current) {
-          mapRef.current.setLayoutProperty(
-            layerName,
-            'visibility',
-            activeLayers[layerName] ? 'visible' : 'none',
-          );
-        }
-        // Update the data
-        (
-          mapRef.current.getSource(layerName) as maplibregl.GeoJSONSource
-        ).setData(geoJsonData[layerName]);
-      } else {
-        addSourceAndLayer(layerName, geoJsonData[layerName]);
-        addPopupToLayer(layerName);
-        // Set initial visibility
-        if (mapRef.current && mapRef.current.getLayer(layerName)) {
-          mapRef.current.setLayoutProperty(
-            layerName,
-            'visibility',
-            activeLayers[layerName] ? 'visible' : 'none',
-          );
-        }
-      }
+      });
     });
   };
 
@@ -278,8 +119,12 @@ const Map: React.FC<MapProps> = ({
           if (restore_original) {
             const { layer } = restore_original;
             if (geoJsonData && geoJsonData[layer]) {
-              addSourceAndLayer(layer, geoJsonData[layer]);
-              addPopupToLayer(layer);
+              addSourceAndLayer(mapRef.current, layer, geoJsonData[layer]);
+              addPopupToLayer(
+                mapRef.current,
+                layer,
+                ApiCalls.getLayerPopupProperties,
+              );
             }
           }
           break;
@@ -301,7 +146,14 @@ const Map: React.FC<MapProps> = ({
   }, [apiKey, lat, lon, zoom]);
 
   useEffect(() => {
-    updateMapLayers();
+    if (mapRef.current) {
+      updateMapLayers(
+        mapRef.current,
+        geoJsonData,
+        activeLayers,
+        ApiCalls.getLayerPopupProperties,
+      );
+    }
   }, [geoJsonData, activeLayers]);
 
   useEffect(() => {
