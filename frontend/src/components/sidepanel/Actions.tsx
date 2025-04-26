@@ -6,7 +6,6 @@ import React, {
   useRef,
 } from 'react';
 import { ApiCalls } from '../../utils/apiCalls';
-import { AVAILABLE_ACTIONS } from '../../config/actions';
 
 interface ActionsProps {
   onActionResponse: (response: any) => {
@@ -20,7 +19,7 @@ interface Message {
   response: any;
   error?: string;
   success?: string;
-  actions?: Record<string, string>;
+  helpText?: string;
 }
 
 const Actions: React.FC<ActionsProps> = ({ onActionResponse }) => {
@@ -40,11 +39,13 @@ const Actions: React.FC<ActionsProps> = ({ onActionResponse }) => {
     const response = await ApiCalls.getAction(actionMessage);
 
     if (response?.action?.intent === 'HELP') {
+      const helpResponse = await fetch(`${ApiCalls.getAPIUrl()}/help`);
+      const helpData = await helpResponse.json();
       const message: Message = {
         message: actionMessage,
         response,
-        success: 'Available actions:',
-        actions: AVAILABLE_ACTIONS,
+        success: "Here's what you can do:",
+        helpText: helpData.response,
       };
       setMessageHistory((prev) => [...prev, message]);
     } else {
@@ -54,7 +55,6 @@ const Actions: React.FC<ActionsProps> = ({ onActionResponse }) => {
         response,
         error: result?.error,
         success: result?.success,
-        actions: result?.actions,
       };
       setMessageHistory((prev) => [...prev, message]);
     }
@@ -108,16 +108,12 @@ const Actions: React.FC<ActionsProps> = ({ onActionResponse }) => {
                 Error: {item.error}
               </div>
             )}
-            {item.actions && (
-              <div style={{ marginTop: '8px' }}>
-                {Object.entries(item.actions).map(([action, description]) => (
-                  <div key={action} style={{ marginBottom: '4px' }}>
-                    <strong>{action}:</strong> {description}
-                  </div>
-                ))}
+            {item.helpText && (
+              <div style={{ marginTop: '8px', whiteSpace: 'pre-line' }}>
+                {item.helpText}
               </div>
             )}
-            {item.success && (
+            {item.success && !item.helpText && (
               <div style={{ color: 'green', marginBottom: '4px' }}>
                 {item.success}
               </div>
