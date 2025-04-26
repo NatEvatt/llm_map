@@ -3,12 +3,12 @@
 current_head=$(git rev-parse HEAD)
 
 git fetch origin
+git pull
 
 new_head=$(git rev-parse HEAD)
 
 if [ "$current_head" != "$new_head" ]; then
   echo "Changes detected!  Running Deployment..."
-  git pull
   docker compose -f docker-compose-deploy.yml build
   docker compose -f docker-compose-deploy.yml up -d
 else
