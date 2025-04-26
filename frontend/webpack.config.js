@@ -34,6 +34,7 @@ module.exports = {
     host: '0.0.0.0',
     hot: true,
     open: true,
+    allowedHosts: "all"
   },
   plugins: [
     new Dotenv({
