@@ -42,5 +42,3 @@ To run the project locally:
 Once it’s up and running, open your browser to `http://localhost:9001` (or whichever port is specified) and start exploring!
 
 ---
-
-A small change to test deployment
