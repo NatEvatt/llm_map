@@ -192,3 +192,34 @@ export const updateMapLayers = (
     }
   });
 };
+
+// Add this to the existing color utilities at the top of layerUtils.ts
+export const setLayerColor = (
+  map: maplibregl.Map,
+  layerId: string,
+  color: string,
+) => {
+  if (!map || !map.getLayer(layerId)) return false;
+
+  const layer = map.getLayer(layerId);
+  if (!layer) return false;
+
+  // Update the layer colors based on its type
+  switch (layer.type) {
+    case 'circle':
+      map.setPaintProperty(layerId, 'circle-color', color);
+      break;
+    case 'fill':
+      map.setPaintProperty(layerId, 'fill-color', color);
+      break;
+    case 'line':
+      map.setPaintProperty(layerId, 'line-color', color);
+      break;
+    default:
+      return false;
+  }
+
+  // Update the cached color
+  layerColors[layerId] = { main: color, stroke: '#FFFFFF' };
+  return true;
+};

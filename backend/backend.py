@@ -382,6 +382,9 @@ def get_action_prompt(action):
     9. RESET_VIEW - Reset to default view
     10. HEAT_MAP - Add, update or remove the heat map layer (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
     11. CLUSTER - Add or remove cluster layer for point data (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
+    12. CHANGE_COLOR - Change the color of a specific layer (requires "layer" and "color" parameters)
+       - "layer": name of the layer to change
+       - "color": color in any valid CSS format (hex, rgb, hsl, named colors)
 
     The response must be a JSON object with:
     - "intent": One of the action types in CAPS or "HELP"
@@ -397,6 +400,16 @@ def get_action_prompt(action):
     - "remove cluster layer" -> {{"intent": "CLUSTER", "parameters": {{"action": "REMOVE", "layer": "fountains"}}}}
     - "what can I do?" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
     - "show me available actions" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
+    - "change fountains to red" -> {{"intent": "CHANGE_COLOR", "parameters": {{"layer": "fountains", "color": "#FF0000"}}}}
+    - "make parks green" -> {{"intent": "CHANGE_COLOR", "parameters": {{"layer": "parks", "color": "#00FF00"}}}}
+    - "set cycle paths color to blue" -> {{"intent": "CHANGE_COLOR", "parameters": {{"layer": "cycle_paths", "color": "#0000FF"}}}}
+    - "change the color of fountains to rgb(255, 0, 0)" -> {{"intent": "CHANGE_COLOR", "parameters": {{"layer": "fountains", "color": "rgb(255, 0, 0)"}}}}
+
+    The color parameter can be:
+    - Hex color (e.g., "#FF0000")
+    - RGB color (e.g., "rgb(255, 0, 0)")
+    - HSL color (e.g., "hsl(0, 100%, 50%)")
+    - Named color (e.g., "red", "blue", "green")
 
     Action: {action}
 

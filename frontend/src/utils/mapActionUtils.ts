@@ -1,7 +1,11 @@
 import maplibregl from 'maplibre-gl';
 import { handleClusterAction } from './clusterUtils';
 import { handleHeatMapAction } from './heatmapUtils';
-import { addSourceAndLayer, addPopupToLayer } from './layerUtils';
+import {
+  addSourceAndLayer,
+  addPopupToLayer,
+  setLayerColor,
+} from './layerUtils';
 
 interface MapActionResult {
   error?: string;
@@ -20,6 +24,7 @@ interface MapActionParameters {
   zoom?: number;
   action?: string;
   layer?: string;
+  color?: string;
 }
 
 interface MapAction {
@@ -117,6 +122,20 @@ export const handleMapAction = (
         }
       } else {
         result = { error: 'Missing required parameters for cluster action' };
+      }
+      break;
+    case 'CHANGE_COLOR':
+      if (parameters.layer && parameters.color) {
+        const success = setLayerColor(map, parameters.layer, parameters.color);
+        result = success
+          ? {
+              success: `Changed color of layer ${parameters.layer} to ${parameters.color}`,
+            }
+          : { error: `Failed to change color of layer ${parameters.layer}` };
+      } else {
+        result = {
+          error: 'Missing required parameters for color change action',
+        };
       }
       break;
     default:
