@@ -223,3 +223,51 @@ export const setLayerColor = (
   layerColors[layerId] = { main: color, stroke: '#FFFFFF' };
   return true;
 };
+
+// Add a new function to set the circle radius for point layers
+export const setCircleRadius = (
+  map: maplibregl.Map,
+  layerId: string,
+  radius: number,
+) => {
+  if (!map || !map.getLayer(layerId)) return false;
+
+  const layer = map.getLayer(layerId);
+  if (!layer || layer.type !== 'circle') return false;
+
+  // Update the circle radius
+  map.setPaintProperty(layerId, 'circle-radius', radius);
+  return true;
+};
+
+// Add a new function to set the stroke width for line layers
+export const setStrokeWidth = (
+  map: maplibregl.Map,
+  layerId: string,
+  width: number,
+) => {
+  if (!map || !map.getLayer(layerId)) return false;
+
+  const layer = map.getLayer(layerId);
+  if (!layer || layer.type !== 'line') return false;
+
+  // Update the line width
+  map.setPaintProperty(layerId, 'line-width', width);
+  return true;
+};
+
+// Add a new function to set the fill opacity for polygon layers
+export const setFillOpacity = (
+  map: maplibregl.Map,
+  layerId: string,
+  opacity: number,
+) => {
+  if (!map || !map.getLayer(layerId)) return false;
+
+  const layer = map.getLayer(layerId);
+  if (!layer || layer.type !== 'fill') return false;
+
+  // Update the fill opacity
+  map.setPaintProperty(layerId, 'fill-opacity', opacity);
+  return true;
+};

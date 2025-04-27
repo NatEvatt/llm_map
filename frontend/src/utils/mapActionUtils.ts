@@ -5,7 +5,11 @@ import {
   addSourceAndLayer,
   addPopupToLayer,
   setLayerColor,
+  setCircleRadius,
+  setStrokeWidth,
+  setFillOpacity,
 } from './layerUtils';
+import { handleSymbologyChange } from './symbologyUtils';
 
 interface MapActionResult {
   error?: string;
@@ -25,6 +29,9 @@ interface MapActionParameters {
   action?: string;
   layer?: string;
   color?: string;
+  radius?: number;
+  strokeWidth?: number;
+  fillOpacity?: number;
 }
 
 interface MapAction {
@@ -124,17 +131,21 @@ export const handleMapAction = (
         result = { error: 'Missing required parameters for cluster action' };
       }
       break;
-    case 'CHANGE_COLOR':
-      if (parameters.layer && parameters.color) {
-        const success = setLayerColor(map, parameters.layer, parameters.color);
-        result = success
-          ? {
-              success: `Changed color of layer ${parameters.layer} to ${parameters.color}`,
-            }
-          : { error: `Failed to change color of layer ${parameters.layer}` };
+    case 'CHANGE_SYMBOLOGY':
+      if (parameters.layer) {
+        const symbologyResult = handleSymbologyChange(map, parameters.layer, {
+          color: parameters.color,
+          radius: parameters.radius,
+          strokeWidth: parameters.strokeWidth,
+          fillOpacity: parameters.fillOpacity,
+        });
+
+        result = symbologyResult.success
+          ? { success: symbologyResult.message }
+          : { error: symbologyResult.message };
       } else {
         result = {
-          error: 'Missing required parameters for color change action',
+          error: 'Missing required layer parameter for symbology change action',
         };
       }
       break;
