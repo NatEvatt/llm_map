@@ -1,7 +1,15 @@
 import maplibregl from 'maplibre-gl';
 import { handleClusterAction } from './clusterUtils';
 import { handleHeatMapAction } from './heatmapUtils';
-import { addSourceAndLayer, addPopupToLayer } from './layerUtils';
+import {
+  addSourceAndLayer,
+  addPopupToLayer,
+  setLayerColor,
+  setCircleRadius,
+  setStrokeWidth,
+  setFillOpacity,
+} from './layerUtils';
+import { handleSymbologyChange } from './symbologyUtils';
 
 interface MapActionResult {
   error?: string;
@@ -20,6 +28,10 @@ interface MapActionParameters {
   zoom?: number;
   action?: string;
   layer?: string;
+  color?: string;
+  radius?: number;
+  strokeWidth?: number;
+  fillOpacity?: number;
 }
 
 interface MapAction {
@@ -117,6 +129,24 @@ export const handleMapAction = (
         }
       } else {
         result = { error: 'Missing required parameters for cluster action' };
+      }
+      break;
+    case 'CHANGE_SYMBOLOGY':
+      if (parameters.layer) {
+        const symbologyResult = handleSymbologyChange(map, parameters.layer, {
+          color: parameters.color,
+          radius: parameters.radius,
+          strokeWidth: parameters.strokeWidth,
+          fillOpacity: parameters.fillOpacity,
+        });
+
+        result = symbologyResult.success
+          ? { success: symbologyResult.message }
+          : { error: symbologyResult.message };
+      } else {
+        result = {
+          error: 'Missing required layer parameter for symbology change action',
+        };
       }
       break;
     default:

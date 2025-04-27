@@ -382,6 +382,13 @@ def get_action_prompt(action):
     9. RESET_VIEW - Reset to default view
     10. HEAT_MAP - Add, update or remove the heat map layer (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
     11. CLUSTER - Add or remove cluster layer for point data (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
+    12. CHANGE_SYMBOLOGY - Change the appearance of a layer (requires "layer" parameter, and optionally "color", "radius", "strokeWidth", and/or "fillOpacity" parameters)
+       - "layer": name of the layer to change
+       - "color": color in any valid CSS format (hex, rgb, hsl, named colors)
+       - "radius": number representing the new radius in pixels (e.g., 10, 15, 20)
+       - "strokeWidth": number representing the new stroke width in pixels (e.g., 2, 3, 5)
+       - "fillOpacity": number between 0 and 1 representing the fill opacity (e.g., 0.2, 0.5, 0.8)
+       Note: You can provide any combination of these parameters depending on what the user wants to change
 
     The response must be a JSON object with:
     - "intent": One of the action types in CAPS or "HELP"
@@ -397,6 +404,30 @@ def get_action_prompt(action):
     - "remove cluster layer" -> {{"intent": "CLUSTER", "parameters": {{"action": "REMOVE", "layer": "fountains"}}}}
     - "what can I do?" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
     - "show me available actions" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
+    - "change fountains to red" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "#FF0000"}}}}
+    - "make parks green" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#00FF00"}}}}
+    - "set cycle paths color to blue" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "color": "#0000FF"}}}}
+    - "change the color of fountains to rgb(255, 0, 0)" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "rgb(255, 0, 0)"}}}}
+    - "make fountains bigger" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 10}}}}
+    - "increase the size of fountains" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 12}}}}
+    - "make fountains smaller" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 4}}}}
+    - "set fountains radius to 15" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 15}}}}
+    - "make fountains red and bigger" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "#FF0000", "radius": 10}}}}
+    - "change fountains to blue and set size to 12" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "#0000FF", "radius": 12}}}}
+    - "make parks green and larger" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#00FF00", "radius": 15}}}}
+    - "make cycle paths thicker" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "strokeWidth": 5}}}}
+    - "set cycle paths to red and make them thicker" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "color": "#FF0000", "strokeWidth": 5}}}}
+    - "make cycle paths blue and set width to 3" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "color": "#0000FF", "strokeWidth": 3}}}}
+    - "make parks more transparent" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "fillOpacity": 0.3}}}}
+    - "set parks to green and make them more transparent" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#00FF00", "fillOpacity": 0.3}}}}
+    - "make parks more opaque" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "fillOpacity": 0.8}}}}
+    - "set parks to blue and make them more opaque" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#0000FF", "fillOpacity": 0.8}}}}
+
+    The color parameter can be:
+    - Hex color (e.g., "#FF0000")
+    - RGB color (e.g., "rgb(255, 0, 0)")
+    - HSL color (e.g., "hsl(0, 100%, 50%)")
+    - Named color (e.g., "red", "blue", "green")
 
     Action: {action}
 
@@ -449,3 +480,46 @@ async def process_map_action(action: str = Query(..., description="Natural langu
         print(f"Error processing action: {str(e)}")
         print(f"Error type: {type(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+def get_help_text():
+    """Return a friendly formatted string of available actions."""
+    help_text = """
+    Here's what you can do with the map:
+
+    🗺️ Basic Map Controls:
+    - Zoom in or out ("zoom in a bit", "zoom out 2 levels")
+    - Set a specific zoom level ("zoom to level 12")
+    - Move around ("pan left", "move right", "go up")
+    - Fly to places ("fly to London", "take me to Paris")
+    - Jump to locations ("jump to New York", "show me Tokyo")
+    - Rotate the view ("rotate 45 degrees", "turn right")
+    - Tilt the view ("tilt up 30 degrees", "pitch down")
+    - Reset everything ("reset view", "start over")
+
+    🎨 Visual Effects:
+    - Change layer appearance:
+      * Change colors ("make parks green", "change fountains to blue")
+      * Change sizes ("make fountains bigger", "increase the size of fountains")
+      * Change line thickness ("make cycle paths thicker", "set cycle paths width to 3")
+      * Change fill opacity ("make parks more transparent", "set parks to be more opaque")
+      * Change multiple properties at once ("make parks green and more transparent", "set cycle paths to blue and make them thicker")
+    - Add heat maps ("show heat map", "add heat map for fountains")
+    - Remove heat maps ("remove heat map", "hide heat map")
+    - Cluster points ("cluster the fountains", "group points together")
+    - Remove clusters ("uncluster points", "remove grouping")
+
+    💡 Help:
+    - Ask what's possible ("what can I do?", "show me available actions")
+    - Get help with specific features ("how do I zoom?", "what colors can I use?")
+
+    For colors, you can use:
+    - Simple color names ("red", "blue", "green")
+    - Descriptive colors ("dark blue", "light green", "bright red")
+    - Specific codes if you want ("#FF0000", "rgb(255,0,0)")
+    """
+    return help_text.strip()
+
+@app.get("/help")
+async def get_help():
+    """Return a friendly formatted string of available actions."""
+    return {"response": get_help_text()}
