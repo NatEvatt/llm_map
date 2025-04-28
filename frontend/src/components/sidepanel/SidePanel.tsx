@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import ChatInput from './ChatInput';
 import SavedQueries from './SavedQueries';
 import TabButton from './TabButton';
 import Layers from '../Layers';
 import { ApiCalls } from '../../utils/apiCalls';
-import Actions from './Actions';
+import ChatInterface from './ChatInterface';
+
 interface SavedQuery {
   id: number;
   nl_query: string;
@@ -45,9 +45,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
   onClearFilter,
   onActionResponse,
 }) => {
-  const [activeTab, setActiveTab] = useState<
-    'search' | 'saved' | 'layers' | 'actions'
-  >('search');
+  const [activeTab, setActiveTab] = useState<'chat' | 'saved' | 'layers'>(
+    'chat',
+  );
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -105,9 +105,9 @@ const SidePanel: React.FC<SidePanelProps> = ({
     <div>
       <div style={{ display: 'flex', borderBottom: '1px solid #ddd' }}>
         <TabButton
-          label="Search"
-          isActive={activeTab === 'search'}
-          onClick={() => setActiveTab('search')}
+          label="Chat"
+          isActive={activeTab === 'chat'}
+          onClick={() => setActiveTab('chat')}
         />
         <TabButton
           label="Saved Queries"
@@ -119,22 +119,15 @@ const SidePanel: React.FC<SidePanelProps> = ({
           isActive={activeTab === 'layers'}
           onClick={() => setActiveTab('layers')}
         />
-        <TabButton
-          label="Actions"
-          isActive={activeTab === 'actions'}
-          onClick={() => setActiveTab('actions')}
-        />
       </div>
 
       <div style={{ paddingTop: '16px' }}>
-        {activeTab === 'search' ? (
-          <ChatInput
-            message={message}
-            onMessageChange={onMessageChange}
-            onSend={onSend}
+        {activeTab === 'chat' ? (
+          <ChatInterface
+            onActionResponse={onActionResponse}
+            onSaveQuery={onSaveQuery}
             ids={ids}
             submittedQuery={submittedQuery}
-            onSaveQuery={onSaveQuery}
           />
         ) : activeTab === 'saved' ? (
           <SavedQueries
@@ -142,14 +135,12 @@ const SidePanel: React.FC<SidePanelProps> = ({
             onLoadQuery={handleLoadSavedQuery}
             onDeleteQuery={handleDeleteQuery}
           />
-        ) : activeTab === 'layers' ? (
+        ) : (
           <Layers
             layers={layers}
             onToggleLayer={onToggleLayer}
             onClearFilter={onClearFilter}
           />
-        ) : (
-          <Actions onActionResponse={onActionResponse} />
         )}
       </div>
     </div>

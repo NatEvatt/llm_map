@@ -20,6 +20,7 @@ interface Message {
   error?: string;
   success?: string;
   helpText?: string;
+  type?: 'action' | 'query';
 }
 
 const Actions: React.FC<ActionsProps> = ({ onActionResponse }) => {
@@ -36,9 +37,9 @@ const Actions: React.FC<ActionsProps> = ({ onActionResponse }) => {
 
   const onSubmitMapAction = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const response = await ApiCalls.getAction(actionMessage);
+    const response = await ApiCalls.fetchNLQueryIds(actionMessage);
 
-    if (response?.action?.intent === 'HELP') {
+    if (response?.type === 'action' && response?.action?.intent === 'HELP') {
       const helpResponse = await fetch(`${ApiCalls.getAPIUrl()}/help`);
       const helpData = await helpResponse.json();
       const message: Message = {
@@ -48,7 +49,7 @@ const Actions: React.FC<ActionsProps> = ({ onActionResponse }) => {
         helpText: helpData.response,
       };
       setMessageHistory((prev) => [...prev, message]);
-    } else {
+    } else if (response?.type === 'action') {
       const result = onActionResponse(response);
       const message: Message = {
         message: actionMessage,

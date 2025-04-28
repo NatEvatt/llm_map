@@ -1,7 +1,6 @@
 export class ApiCalls {
   static getAPIUrl() {
-    const apiUrl =
-      process.env.BACKEND_URL;
+    const apiUrl = process.env.BACKEND_URL;
     return apiUrl;
   }
 
@@ -84,20 +83,5 @@ export class ApiCalls {
       throw new Error('Failed to load saved query');
     }
     return response.json();
-  }
-
-  static async getAction(action: string) {
-    const urlSafeAction = encodeURIComponent(action);
-    const apiUrl = ApiCalls.getAPIUrl();
-    const response = await fetch(
-      `${apiUrl}/api/actions?action=${urlSafeAction}`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      },
-    );
-    return await response.json();
   }
 }
