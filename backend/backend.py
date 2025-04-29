@@ -252,10 +252,14 @@ def query_map(nl_query: str = Query(..., description="Natural language query")):
             sql_query, primary_layer = natural_language_to_sql(nl_query)
             ids = query_postgis(sql_query)
             return JSONResponse(content={
-                "type": "query",
-                "ids": ids,
-                "primary_layer": primary_layer,
-                "sql_query": sql_query
+                "type": "action",
+                "action": {
+                    "intent": "FILTER",
+                    "parameters": {
+                        "layer": primary_layer,
+                        "ids": ids
+                    }
+                }
             })
         except Exception as e:
             print(f"Error processing query: {str(e)}")

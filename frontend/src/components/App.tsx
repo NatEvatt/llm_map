@@ -70,20 +70,10 @@ const App: React.FC = () => {
       setSqlQuery(data.sql_query);
       setPrimaryLayer(data.primary_layer);
       console.log('SQL Query:', data.sql_query);
-      const layer = data.primary_layer;
 
-      const filteredFeatures =
-        allFeatures?.[layer]?.features?.filter((feature: any) =>
-          data.ids.includes(feature.properties.id),
-        ) || [];
+      // Use the action response from the backend directly
+      setActionResponse(data);
 
-      setGeoJsonData((previousGeoJsonData) => ({
-        ...previousGeoJsonData,
-        [layer]: {
-          type: 'FeatureCollection',
-          features: filteredFeatures,
-        },
-      }));
       setSubmittedQuery(message);
       console.log('Server response:', data);
     } catch (error) {

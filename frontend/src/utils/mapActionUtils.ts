@@ -32,6 +32,7 @@ interface MapActionParameters {
   radius?: number;
   strokeWidth?: number;
   fillOpacity?: number;
+  ids?: number[];
 }
 
 interface MapAction {
@@ -147,6 +148,32 @@ export const handleMapAction = (
         result = {
           error: 'Missing required layer parameter for symbology change action',
         };
+      }
+      break;
+    case 'FILTER':
+      if (parameters.layer && parameters.ids) {
+        // Filter the features based on the provided IDs
+        const filteredFeatures =
+          geoJsonData[parameters.layer]?.features?.filter((feature: any) =>
+            parameters.ids?.includes(feature.properties.id),
+          ) || [];
+
+        // Update the layer with filtered features
+        if (map.getSource(parameters.layer)) {
+          (map.getSource(parameters.layer) as maplibregl.GeoJSONSource).setData(
+            {
+              type: 'FeatureCollection',
+              features: filteredFeatures,
+            },
+          );
+          result = {
+            success: `Filtered ${parameters.layer} to show ${filteredFeatures.length} features`,
+          };
+        } else {
+          result = { error: `Layer ${parameters.layer} not found` };
+        }
+      } else {
+        result = { error: 'Missing required parameters for filter action' };
       }
       break;
     default:
