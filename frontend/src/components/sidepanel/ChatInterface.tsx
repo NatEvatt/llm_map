@@ -48,55 +48,29 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // Determine if this is an action or query based on the message content
-    const isAction =
-      message.toLowerCase().includes('make') ||
-      message.toLowerCase().includes('change') ||
-      message.toLowerCase().includes('set') ||
-      message.toLowerCase().includes('zoom') ||
-      message.toLowerCase().includes('move') ||
-      message.toLowerCase().includes('rotate') ||
-      message.toLowerCase().includes('tilt') ||
-      message.toLowerCase().includes('reset') ||
-      message.toLowerCase().includes('what can i do');
+    // Use the combined query endpoint for both actions and queries
+    const response = await ApiCalls.fetchNLQueryIds(message);
 
-    let response;
-    if (isAction) {
-      // Use the combined query endpoint for both actions and queries
-      response = await ApiCalls.fetchNLQueryIds(message);
-
-      if (response?.type === 'action') {
-        if (response.action?.intent === 'HELP') {
-          const helpResponse = await fetch(`${ApiCalls.getAPIUrl()}/help`);
-          const helpData = await helpResponse.json();
-          const messageObj: Message = {
-            message,
-            response,
-            type: 'action',
-            success: "Here's what you can do:",
-            helpText: helpData.response,
-          };
-          setMessageHistory((prev) => [...prev, messageObj]);
-        } else {
-          const result = onActionResponse(response);
-          const messageObj: Message = {
-            message,
-            response,
-            type: 'action',
-            error: result?.error,
-            success: result?.success,
-          };
-          setMessageHistory((prev) => [...prev, messageObj]);
-        }
-      }
-    } else {
-      response = await ApiCalls.fetchNLQueryIds(message);
-      if (response?.type === 'query') {
+    if (response?.type === 'action') {
+      if (response.action?.intent === 'HELP') {
+        const helpResponse = await fetch(`${ApiCalls.getAPIUrl()}/help`);
+        const helpData = await helpResponse.json();
         const messageObj: Message = {
           message,
           response,
-          type: 'query',
-          success: `Found ${response.ids.length} results`,
+          type: 'action',
+          success: "Here's what you can do:",
+          helpText: helpData.response,
+        };
+        setMessageHistory((prev) => [...prev, messageObj]);
+      } else {
+        const result = onActionResponse(response);
+        const messageObj: Message = {
+          message,
+          response,
+          type: 'action',
+          error: result?.error,
+          success: result?.success,
         };
         setMessageHistory((prev) => [...prev, messageObj]);
       }

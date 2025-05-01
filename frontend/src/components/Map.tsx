@@ -78,12 +78,15 @@ const Map: React.FC<MapProps> = ({
 
   useEffect(() => {
     if (actionResponse && mapRef.current) {
-      const result = handleMapAction(
-        mapRef.current,
-        actionResponse,
-        geoJsonData,
-        ApiCalls.getLayerPopupProperties,
-      );
+      let result: { error?: string; success?: string } = {};
+      if (actionResponse.type === 'action') {
+        result = handleMapAction(
+          mapRef.current,
+          actionResponse,
+          geoJsonData,
+          ApiCalls.getLayerPopupProperties,
+        );
+      }
       onActionResult(result);
     }
   }, [actionResponse]);

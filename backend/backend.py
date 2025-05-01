@@ -196,74 +196,108 @@ def natural_language_to_sql(nl_query):
     else:
         return "ERROR: Failed to get a valid response from the API.", None
 
+def detect_intent(nl_query: str) -> dict:
+    """Use LLM to determine if the input is an action or query."""
+    intent_prompt = f"""
+    Determine if the following user input is a map action or a data query.
+    Return a JSON object with:
+    - "type": either "action" or "query"
+    - "confidence": a number between 0 and 1 indicating confidence in the classification
+
+    Examples:
+    - "zoom in" -> {{"type": "action", "confidence": 0.95}}
+    - "show me all parks" -> {{"type": "query", "confidence": 0.95}}
+    - "make fountains red" -> {{"type": "action", "confidence": 0.9}}
+    - "find parks near fountains" -> {{"type": "query", "confidence": 0.9}}
+
+    User input: "{nl_query}"
+
+    Respond with only the JSON object, no other text.
+    """
+    
+    ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
+    response = requests.post(
+        ollama_url,
+        auth=OLLAMA_CONFIG["auth"],
+        json={"model": OLLAMA_CONFIG['model'], "prompt": intent_prompt, "stream": False}
+    )
+    
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to process intent with Ollama")
+
+    # Parse the response
+    response_data = response.json()
+    cleaned_response = response_data["response"].replace("```json", "").replace("```", "").strip()
+    return json.loads(cleaned_response)
+
+def handle_map_action(nl_query: str) -> dict:
+    """Process a map action using the LLM."""
+    prompt = get_action_prompt(nl_query)
+    ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
+    response = requests.post(
+        ollama_url,
+        auth=OLLAMA_CONFIG["auth"],
+        json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False}
+    )
+    
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to process action with Ollama")
+
+    # Parse the response
+    response_data = response.json()
+    cleaned_response = response_data["response"].replace("```json", "").replace("```", "").strip()
+    action_json = json.loads(cleaned_response)
+    
+    # Handle cluster layer state
+    if action_json.get("intent") == "CLUSTER":
+        layer = action_json.get("parameters", {}).get("layer")
+        cluster_action = action_json.get("parameters", {}).get("action")
+        
+        if cluster_action == "ADD":
+            CLUSTER_STATE[layer] = True
+        elif cluster_action == "REMOVE":
+            CLUSTER_STATE[layer] = False
+            action_json["restore_original"] = {
+                "layer": layer,
+                "action": "ADD"
+            }
+    
+    return {
+        "type": "action",
+        "action": action_json
+    }
+
+def handle_data_query(nl_query: str) -> dict:
+    """Process a data query using the LLM and PostGIS."""
+    sql_query, primary_layer = natural_language_to_sql(nl_query)
+    ids = query_postgis(sql_query)
+    return {
+        "type": "action",  # Keep as action type for compatibility
+        "action": {
+            "intent": "FILTER",
+            "parameters": {
+                "layer": primary_layer,
+                "ids": ids
+            }
+        }
+    }
+
 @app.get("/query")
 def query_map(nl_query: str = Query(..., description="Natural language query")):
-    # Determine if this is an action or query based on the message content
-    is_action = any(keyword in nl_query.lower() for keyword in [
-        'make', 'change', 'set', 'zoom', 'move', 'rotate', 'tilt', 'reset',
-        'what can i do', 'show me available actions'
-    ])
-
-    if is_action:
-        # Handle as a map action
-        try:
-            prompt = get_action_prompt(nl_query)
-            ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
-            response = requests.post(
-                ollama_url,
-                auth=OLLAMA_CONFIG["auth"],
-                json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False}
-            )
+    """Process a natural language input as either a map action or data query."""
+    try:
+        # Use LLM to determine intent
+        intent_json = detect_intent(nl_query)
+        
+        # Process based on intent
+        if intent_json["type"] == "action":
+            return JSONResponse(content=handle_map_action(nl_query))
+        else:
+            return JSONResponse(content=handle_data_query(nl_query))
             
-            if response.status_code != 200:
-                raise HTTPException(status_code=500, detail="Failed to process action with Ollama")
-
-            # Parse the response
-            response_data = response.json()
-            cleaned_response = response_data["response"].replace("```json", "").replace("```", "").strip()
-            action_json = json.loads(cleaned_response)
-            
-            # Handle cluster layer state
-            if action_json.get("intent") == "CLUSTER":
-                layer = action_json.get("parameters", {}).get("layer")
-                cluster_action = action_json.get("parameters", {}).get("action")
-                
-                if cluster_action == "ADD":
-                    CLUSTER_STATE[layer] = True
-                elif cluster_action == "REMOVE":
-                    CLUSTER_STATE[layer] = False
-                    action_json["restore_original"] = {
-                        "layer": layer,
-                        "action": "ADD"
-                    }
-            
-            return JSONResponse(content={
-                "type": "action",
-                "action": action_json
-            })
-            
-        except Exception as e:
-            print(f"Error processing action: {str(e)}")
-            print(f"Error type: {type(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
-    else:
-        # Handle as a SQL query
-        try:
-            sql_query, primary_layer = natural_language_to_sql(nl_query)
-            ids = query_postgis(sql_query)
-            return JSONResponse(content={
-                "type": "action",
-                "action": {
-                    "intent": "FILTER",
-                    "parameters": {
-                        "layer": primary_layer,
-                        "ids": ids
-                    }
-                }
-            })
-        except Exception as e:
-            print(f"Error processing query: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        print(f"Error processing query: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/get-layer-popup-properties")
 def get_park_popup_properties(layer: str, park_id: int):
