@@ -6,6 +6,8 @@
 
 Contributions are welcome — whether you're refining the UX, improving prompts, or adding new capabilities!
 
+Check out the [Live Demo](https://llm-map.oldmanz.com/)
+
 <img src="frontend/public/images/screen_grab.png" alt="Logo" height="400" style="display: block;
         margin-left: auto;
         margin-right: auto;">
