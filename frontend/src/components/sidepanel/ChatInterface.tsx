@@ -8,6 +8,13 @@ import React, {
 } from 'react';
 import { ApiCalls } from '../../utils/apiCalls';
 
+const spinnerStyles = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
 interface ChatInterfaceProps {
   onActionResponse: (response: any) => {
     error?: string;
@@ -36,6 +43,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 }) => {
   const [message, setMessage] = useState('');
   const [messageHistory, setMessageHistory] = useState<Array<Message>>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const chatDisplayRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -47,36 +55,49 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setIsLoading(true);
 
-    // Use the combined query endpoint for both actions and queries
-    const response = await ApiCalls.fetchNLQueryIds(message);
+    try {
+      // Use the combined query endpoint for both actions and queries
+      const response = await ApiCalls.fetchNLQueryIds(message);
 
-    if (response?.type === 'action') {
-      if (response.action?.intent === 'HELP') {
-        const helpResponse = await fetch(`${ApiCalls.getAPIUrl()}/help`);
-        const helpData = await helpResponse.json();
-        const messageObj: Message = {
-          message,
-          response,
-          type: 'action',
-          success: "Here's what you can do:",
-          helpText: helpData.response,
-        };
-        setMessageHistory((prev) => [...prev, messageObj]);
-      } else {
-        const result = onActionResponse(response);
-        const messageObj: Message = {
-          message,
-          response,
-          type: 'action',
-          error: result?.error,
-          success: result?.success,
-        };
-        setMessageHistory((prev) => [...prev, messageObj]);
+      if (response?.type === 'action') {
+        if (response.action?.intent === 'HELP') {
+          const helpResponse = await fetch(`${ApiCalls.getAPIUrl()}/help`);
+          const helpData = await helpResponse.json();
+          const messageObj: Message = {
+            message,
+            response,
+            type: 'action',
+            success: "Here's what you can do:",
+            helpText: helpData.response,
+          };
+          setMessageHistory((prev) => [...prev, messageObj]);
+        } else {
+          const result = onActionResponse(response);
+          const messageObj: Message = {
+            message,
+            response,
+            type: 'action',
+            error: result?.error,
+            success: result?.success,
+          };
+          setMessageHistory((prev) => [...prev, messageObj]);
+        }
       }
+    } catch (error) {
+      console.error('Error processing message:', error);
+      const errorMessage: Message = {
+        message,
+        response: null,
+        type: 'query',
+        error: 'An error occurred while processing your request.',
+      };
+      setMessageHistory((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+      setMessage('');
     }
-
-    setMessage('');
   };
 
   const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
@@ -102,6 +123,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       }}
       className="chatInterface"
     >
+      <style>{spinnerStyles}</style>
       <div
         ref={chatDisplayRef}
         className="chatDisplay"
@@ -113,6 +135,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           borderRadius: '4px',
           backgroundColor: '#f8f9fa',
           marginBottom: '16px',
+          position: 'relative',
         }}
       >
         {messageHistory.map((item, index) => (
@@ -137,6 +160,34 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             )}
           </div>
         ))}
+        {isLoading && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '20px',
+              right: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              padding: '8px 16px',
+              borderRadius: '20px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            }}
+          >
+            <div
+              style={{
+                width: '20px',
+                height: '20px',
+                border: '3px solid #f3f3f3',
+                borderTop: '3px solid #3498db',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+              }}
+            />
+            <span>Processing...</span>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '8px' }}>
@@ -145,20 +196,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           onKeyDown={handleKeyDown}
           onChange={handleInputChange}
           value={message}
+          disabled={isLoading}
           style={{
             flex: 1,
             padding: '8px',
             height: '100px',
             resize: 'none',
             border: '1px solid #cccccc',
+            opacity: isLoading ? 0.7 : 1,
           }}
         />
         <button
           type="submit"
+          disabled={isLoading}
           style={{
             padding: '8px 16px',
             backgroundColor: '#f8f9fa',
             border: '1px solid #cccccc',
+            opacity: isLoading ? 0.7 : 1,
+            cursor: isLoading ? 'not-allowed' : 'pointer',
           }}
         >
           Send
