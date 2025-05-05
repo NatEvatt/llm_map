@@ -89,9 +89,13 @@ const App: React.FC = () => {
     setMessage(e.target.value);
   };
 
-  const handleSaveQuery = () => {
-    console.log('Save query');
-    ApiCalls.saveQuery(submittedQuery, sqlQuery, primaryLayer)
+  const handleSaveQuery = (
+    nlQuery: string,
+    sqlQuery: string,
+    primaryLayer: string,
+  ) => {
+    console.log('Save query', { nlQuery, sqlQuery, primaryLayer });
+    ApiCalls.saveQuery(nlQuery, sqlQuery, primaryLayer)
       .then((response) => {
         console.log('Query saved successfully:', response);
       })

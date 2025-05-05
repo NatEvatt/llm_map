@@ -277,7 +277,9 @@ def handle_data_query(nl_query: str) -> dict:
             "intent": "FILTER",
             "parameters": {
                 "layer": primary_layer,
-                "ids": ids
+                "ids": ids,
+                "sql_query": sql_query,
+                "primary_layer": primary_layer
             }
         }
     }
@@ -363,6 +365,13 @@ def test_ollama():
 @app.post("/save-query")
 def save_query(nl_query: str, sql_query: str, primary_layer: str):
     """Save the natural language and SQL queries to the database."""
+    # Validate that none of the required fields are empty
+    if not nl_query or not sql_query or not primary_layer:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "All fields (nl_query, sql_query, primary_layer) must be non-empty"}
+        )
+
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
 

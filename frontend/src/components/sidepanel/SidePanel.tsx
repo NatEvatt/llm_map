@@ -24,7 +24,11 @@ interface SidePanelProps {
   onSend: (event: React.FormEvent<HTMLFormElement>) => void;
   ids: number[];
   submittedQuery: string;
-  onSaveQuery: () => void;
+  onSaveQuery: (
+    nlQuery: string,
+    sqlQuery: string,
+    primaryLayer: string,
+  ) => void;
   onLoadQuery: (ids: number[], primaryLayer: string) => void;
   layers: Layer[];
   onToggleLayer: (layerName: string) => void;
@@ -71,11 +75,16 @@ const SidePanel: React.FC<SidePanelProps> = ({
     }
   }, [activeTab]);
 
-  const handleSaveQuery = () => {
-    if (submittedQuery) {
+  const handleSaveQuery = (
+    nlQuery: string,
+    sqlQuery: string,
+    primaryLayer: string,
+  ) => {
+    if (nlQuery && sqlQuery && primaryLayer) {
+      onSaveQuery(nlQuery, sqlQuery, primaryLayer);
       const newQuery: SavedQuery = {
         id: Date.now(),
-        nl_query: submittedQuery,
+        nl_query: nlQuery,
         timestamp: new Date().toISOString(),
       };
       setSavedQueries([...savedQueries, newQuery]);
@@ -125,7 +134,7 @@ const SidePanel: React.FC<SidePanelProps> = ({
         {activeTab === 'chat' ? (
           <ChatInterface
             onActionResponse={onActionResponse}
-            onSaveQuery={onSaveQuery}
+            onSaveQuery={handleSaveQuery}
             ids={ids}
             submittedQuery={submittedQuery}
           />

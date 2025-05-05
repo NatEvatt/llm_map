@@ -21,7 +21,11 @@ interface ChatInterfaceProps {
     success?: string;
     actions?: Record<string, string>;
   };
-  onSaveQuery: () => void;
+  onSaveQuery: (
+    nlQuery: string,
+    sqlQuery: string,
+    primaryLayer: string,
+  ) => void;
   ids: Array<number>;
   submittedQuery: string;
 }
@@ -33,6 +37,7 @@ interface Message {
   success?: string;
   helpText?: string;
   type: 'action' | 'query';
+  saved?: boolean;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -73,6 +78,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             helpText: helpData.response,
           };
           setMessageHistory((prev) => [...prev, messageObj]);
+        } else if (response.action?.intent === 'FILTER') {
+          // Handle filter intent as a query that can be saved
+          const result = onActionResponse(response);
+          const messageObj: Message = {
+            message,
+            response,
+            type: 'query',
+            saved: false,
+            error: result?.error,
+            success: result?.success,
+          };
+          setMessageHistory((prev) => [...prev, messageObj]);
         } else {
           const result = onActionResponse(response);
           const messageObj: Message = {
@@ -84,6 +101,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           };
           setMessageHistory((prev) => [...prev, messageObj]);
         }
+      } else {
+        // Handle successful query
+        const messageObj: Message = {
+          message,
+          response,
+          type: 'query',
+          saved: false,
+        };
+        setMessageHistory((prev) => [...prev, messageObj]);
       }
     } catch (error) {
       console.error('Error processing message:', error);
@@ -114,6 +140,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
+  // Save handler for individual messages
+  const handleSaveMessage = (msgIdx: number) => {
+    const msg = messageHistory[msgIdx];
+    if (!msg.saved && msg.response?.action?.parameters) {
+      const { sql_query, primary_layer } = msg.response.action.parameters;
+      if (sql_query && primary_layer) {
+        onSaveQuery(msg.message, sql_query, primary_layer);
+        setMessageHistory((prev) =>
+          prev.map((m, i) => (i === msgIdx ? { ...m, saved: true } : m)),
+        );
+      }
+    }
+  };
+
   return (
     <div
       style={{
@@ -139,10 +179,45 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }}
       >
         {messageHistory.map((item, index) => (
-          <div key={index} style={{ marginBottom: '12px' }}>
+          <div
+            key={index}
+            style={{
+              marginBottom: '12px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
             <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
               You: {item.message}
             </div>
+            {/* Show save button for unsaved queries, checkmark for saved ones */}
+            {item.type === 'query' &&
+              (item.saved ? (
+                <span
+                  title="Query saved"
+                  style={{
+                    marginLeft: 8,
+                    color: 'green',
+                    fontSize: '1.2em',
+                  }}
+                >
+                  ✓
+                </span>
+              ) : (
+                <button
+                  title="Save this query"
+                  onClick={() => handleSaveMessage(index)}
+                  style={{
+                    marginLeft: 8,
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '1.2em',
+                  }}
+                >
+                  💾
+                </button>
+              ))}
             {item.error && (
               <div style={{ color: 'red', marginBottom: '4px' }}>
                 Error: {item.error}
@@ -228,7 +303,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <div>{submittedQuery}</div>
             <button
               style={{ padding: '8px 16px', marginTop: '8px' }}
-              onClick={onSaveQuery}
+              onClick={() => {
+                const lastMessage = messageHistory[messageHistory.length - 1];
+                if (
+                  lastMessage?.response?.sql_query &&
+                  lastMessage?.response?.primary_layer
+                ) {
+                  onSaveQuery(
+                    submittedQuery,
+                    lastMessage.response.sql_query,
+                    lastMessage.response.primary_layer,
+                  );
+                }
+              }}
             >
               Save Query
             </button>
