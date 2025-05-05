@@ -284,18 +284,139 @@ def handle_data_query(nl_query: str) -> dict:
         }
     }
 
+def get_action_prompt(action):
+    """Return the prompt for the action."""
+    prompt = f"""
+    Convert the following natural language input into a structured JSON format.
+    First, determine if this is a map action or a data query.
+    
+    If it's a data query (e.g., "show me all parks", "find fountains near parks"), respond with:
+    {{
+        "type": "query",
+        "intent": "FILTER",
+        "parameters": {{
+            "nl_query": "the original query"
+        }}
+    }}
+
+    If it's a map action, respond with:
+    {{
+        "type": "action",
+        "intent": "ACTION_TYPE",
+        "parameters": {{
+            // action-specific parameters
+        }}
+    }}
+    
+Available actions and their parameters:
+    1. ZOOM_IN - Zoom in one level
+    2. ZOOM_OUT - Zoom out one level
+    3. SET_ZOOM - Set specific zoom level (requires "level" parameter: number 0-20)
+    4. PAN - Move in a direction (requires "x" and "y" parameters: numbers in pixels)
+    5. FLY_TO - Animate to location (requires "lng" and "lat" parameters: numbers)
+    6. JUMP_TO - Instantly move to location (requires "lng" and "lat" parameters: numbers)
+    7. ROTATE - Rotate map view (requires "degrees" parameter: number 0-360)
+    8. PITCH - Tilt map view (requires "degrees" parameter: number 0-60)
+    9. RESET_VIEW - Reset to default view
+    10. HEAT_MAP - Add, update or remove the heat map layer (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
+    11. CLUSTER - Add or remove cluster layer for point data (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
+    12. CHANGE_SYMBOLOGY - Change the appearance of a layer (requires "layer" parameter, and optionally "color", "radius", "strokeWidth", and/or "fillOpacity" parameters)
+       - "layer": name of the layer to change
+       - "color": color in any valid CSS format (hex, rgb, hsl, named colors)
+       - "radius": number representing the new radius in pixels (e.g., 10, 15, 20)
+       - "strokeWidth": number representing the new stroke width in pixels (e.g., 2, 3, 5)
+       - "fillOpacity": number between 0 and 1 representing the fill opacity (e.g., 0.2, 0.5, 0.8)
+       Note: You can provide any combination of these parameters depending on what the user wants to change
+
+    The response must be a JSON object with:
+    - "type": either "action" or "query"
+    - "intent": One of the action types in CAPS or "HELP"
+    - "parameters": Object containing required parameters for the action
+
+    Examples:
+    - "zoom in 2 levels" -> {{"intent": "ZOOM_IN", "parameters": {{"levels": 2}}}}
+    - "move left" -> {{"intent": "PAN", "parameters": {{"x": -100, "y": 0}}}}
+    - "go to London" -> {{"intent": "FLY_TO", "parameters": {{"lng": -0.1276, "lat": 51.5074}}}}
+    - "rotate 90 degrees" -> {{"intent": "ROTATE", "parameters": {{"degrees": 90}}}}
+    - "add heat map" -> {{"intent": "HEAT_MAP", "parameters": {{"action": "ADD", "layer": "fountains"}}}}
+    - "add cluster layer" -> {{"intent": "CLUSTER", "parameters": {{"action": "ADD", "layer": "fountains"}}}}
+    - "remove cluster layer" -> {{"intent": "CLUSTER", "parameters": {{"action": "REMOVE", "layer": "fountains"}}}}
+    - "what can I do?" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
+    - "show me available actions" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
+    - "change fountains to red" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "#FF0000"}}}}
+    - "make parks green" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#00FF00"}}}}
+    - "set cycle paths color to blue" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "color": "#0000FF"}}}}
+    - "change the color of fountains to rgb(255, 0, 0)" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "rgb(255, 0, 0)"}}}}
+    - "make fountains bigger" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 10}}}}
+    - "increase the size of fountains" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 12}}}}
+    - "make fountains smaller" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 4}}}}
+    - "set fountains radius to 15" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 15}}}}
+    - "make fountains red and bigger" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "#FF0000", "radius": 10}}}}
+    - "change fountains to blue and set size to 12" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "#0000FF", "radius": 12}}}}
+    - "make parks green and larger" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#00FF00", "radius": 15}}}}
+    - "make cycle paths thicker" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "strokeWidth": 5}}}}
+    - "set cycle paths to red and make them thicker" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "color": "#FF0000", "strokeWidth": 5}}}}
+    - "make cycle paths blue and set width to 3" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "color": "#0000FF", "strokeWidth": 3}}}}
+    - "make parks more transparent" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "fillOpacity": 0.3}}}}
+    - "set parks to green and make them more transparent" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#00FF00", "fillOpacity": 0.3}}}}
+    - "make parks more opaque" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "fillOpacity": 0.8}}}}
+    - "set parks to blue and make them more opaque" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#0000FF", "fillOpacity": 0.8}}}}
+
+    The color parameter can be:
+    - Hex color (e.g., "#FF0000")
+    - RGB color (e.g., "rgb(255, 0, 0)")
+    - HSL color (e.g., "hsl(0, 100%, 50%)")
+    - Named color (e.g., "red", "blue", "green")
+
+    Input: {action}
+
+    Respond with only the JSON object, no other text.
+    """
+    return prompt
+
 @app.get("/query")
 def query_map(nl_query: str = Query(..., description="Natural language query")):
     """Process a natural language input as either a map action or data query."""
     try:
-        # Use LLM to determine intent
-        intent_json = detect_intent(nl_query)
+        # Use single LLM call to determine intent and process
+        prompt = get_action_prompt(nl_query)
+        ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
+        response = requests.post(
+            ollama_url,
+            auth=OLLAMA_CONFIG["auth"],
+            json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False}
+        )
         
-        # Process based on intent
-        if intent_json["type"] == "action":
-            return JSONResponse(content=handle_map_action(nl_query))
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to process query with Ollama")
+
+        # Parse the response
+        response_data = response.json()
+        cleaned_response = response_data["response"].replace("```json", "").replace("```", "").strip()
+        result = json.loads(cleaned_response)
+        
+        # Process based on type
+        if result["type"] == "query":
+            return JSONResponse(content=handle_data_query(result["parameters"]["nl_query"]))
         else:
-            return JSONResponse(content=handle_data_query(nl_query))
+            # Handle cluster layer state for actions
+            if result["intent"] == "CLUSTER":
+                layer = result["parameters"].get("layer")
+                cluster_action = result["parameters"].get("action")
+                
+                if cluster_action == "ADD":
+                    CLUSTER_STATE[layer] = True
+                elif cluster_action == "REMOVE":
+                    CLUSTER_STATE[layer] = False
+                    result["restore_original"] = {
+                        "layer": layer,
+                        "action": "ADD"
+                    }
+            
+            return JSONResponse(content={
+                "type": "action",
+                "action": result
+            })
             
     except Exception as e:
         print(f"Error processing query: {str(e)}")
@@ -461,130 +582,6 @@ class MapActionRequest(BaseModel):
 class MapActionResponse(BaseModel):
     response: str
     action: Optional[Dict[str, Any]] = None
-
-def get_action_prompt(action):
-    """Return the prompt for the action."""
-    prompt = f"""
-    Convert the following natural language map action into a structured JSON format.
-    
-    If the user is asking for help or information about available actions, respond with:
-    {{
-        "intent": "HELP",
-        "parameters": {{
-            "type": "actions"
-        }}
-    }}
-
-    Available actions and their parameters:
-    1. ZOOM_IN - Zoom in one level
-    2. ZOOM_OUT - Zoom out one level
-    3. SET_ZOOM - Set specific zoom level (requires "level" parameter: number 0-20)
-    4. PAN - Move in a direction (requires "x" and "y" parameters: numbers in pixels)
-    5. FLY_TO - Animate to location (requires "lng" and "lat" parameters: numbers)
-    6. JUMP_TO - Instantly move to location (requires "lng" and "lat" parameters: numbers)
-    7. ROTATE - Rotate map view (requires "degrees" parameter: number 0-360)
-    8. PITCH - Tilt map view (requires "degrees" parameter: number 0-60)
-    9. RESET_VIEW - Reset to default view
-    10. HEAT_MAP - Add, update or remove the heat map layer (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
-    11. CLUSTER - Add or remove cluster layer for point data (requires "action" and "layer" parameters: "action": "ADD" or "REMOVE", "layer": "fountains")
-    12. CHANGE_SYMBOLOGY - Change the appearance of a layer (requires "layer" parameter, and optionally "color", "radius", "strokeWidth", and/or "fillOpacity" parameters)
-       - "layer": name of the layer to change
-       - "color": color in any valid CSS format (hex, rgb, hsl, named colors)
-       - "radius": number representing the new radius in pixels (e.g., 10, 15, 20)
-       - "strokeWidth": number representing the new stroke width in pixels (e.g., 2, 3, 5)
-       - "fillOpacity": number between 0 and 1 representing the fill opacity (e.g., 0.2, 0.5, 0.8)
-       Note: You can provide any combination of these parameters depending on what the user wants to change
-
-    The response must be a JSON object with:
-    - "intent": One of the action types in CAPS or "HELP"
-    - "parameters": Object containing required parameters for the action
-
-    Examples:
-    - "zoom in 2 levels" -> {{"intent": "ZOOM_IN", "parameters": {{"levels": 2}}}}
-    - "move left" -> {{"intent": "PAN", "parameters": {{"x": -100, "y": 0}}}}
-    - "go to London" -> {{"intent": "FLY_TO", "parameters": {{"lng": -0.1276, "lat": 51.5074}}}}
-    - "rotate 90 degrees" -> {{"intent": "ROTATE", "parameters": {{"degrees": 90}}}}
-    - "add heat map" -> {{"intent": "HEAT_MAP", "parameters": {{"action": "ADD", "layer": "fountains"}}}}
-    - "add cluster layer" -> {{"intent": "CLUSTER", "parameters": {{"action": "ADD", "layer": "fountains"}}}}
-    - "remove cluster layer" -> {{"intent": "CLUSTER", "parameters": {{"action": "REMOVE", "layer": "fountains"}}}}
-    - "what can I do?" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
-    - "show me available actions" -> {{"intent": "HELP", "parameters": {{"type": "actions"}}}}
-    - "change fountains to red" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "#FF0000"}}}}
-    - "make parks green" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#00FF00"}}}}
-    - "set cycle paths color to blue" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "color": "#0000FF"}}}}
-    - "change the color of fountains to rgb(255, 0, 0)" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "rgb(255, 0, 0)"}}}}
-    - "make fountains bigger" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 10}}}}
-    - "increase the size of fountains" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 12}}}}
-    - "make fountains smaller" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 4}}}}
-    - "set fountains radius to 15" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "radius": 15}}}}
-    - "make fountains red and bigger" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "#FF0000", "radius": 10}}}}
-    - "change fountains to blue and set size to 12" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "fountains", "color": "#0000FF", "radius": 12}}}}
-    - "make parks green and larger" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#00FF00", "radius": 15}}}}
-    - "make cycle paths thicker" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "strokeWidth": 5}}}}
-    - "set cycle paths to red and make them thicker" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "color": "#FF0000", "strokeWidth": 5}}}}
-    - "make cycle paths blue and set width to 3" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "cycle_paths", "color": "#0000FF", "strokeWidth": 3}}}}
-    - "make parks more transparent" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "fillOpacity": 0.3}}}}
-    - "set parks to green and make them more transparent" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#00FF00", "fillOpacity": 0.3}}}}
-    - "make parks more opaque" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "fillOpacity": 0.8}}}}
-    - "set parks to blue and make them more opaque" -> {{"intent": "CHANGE_SYMBOLOGY", "parameters": {{"layer": "parks", "color": "#0000FF", "fillOpacity": 0.8}}}}
-
-    The color parameter can be:
-    - Hex color (e.g., "#FF0000")
-    - RGB color (e.g., "rgb(255, 0, 0)")
-    - HSL color (e.g., "hsl(0, 100%, 50%)")
-    - Named color (e.g., "red", "blue", "green")
-
-    Action: {action}
-
-    Respond with only the JSON object, no other text.
-    """
-    return prompt
-
-@app.get("/api/actions")
-async def process_map_action(action: str = Query(..., description="Natural language map action")):
-    try:
-        prompt = get_action_prompt(action)
-        ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"  # Ollama runs locally
-        response = requests.post(ollama_url, auth=OLLAMA_CONFIG["auth"], json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False})
-    
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Failed to process action with Ollama")
-
-        # Parse the response
-        response_data = response.json()
-        
-        # Clean up the response by removing markdown code block syntax
-        cleaned_response = response_data["response"].replace("```json", "").replace("```", "").strip()
-        print("Cleaned response:", cleaned_response)
-        
-        action_json = json.loads(cleaned_response)
-        print("Parsed action JSON:", action_json)
-        
-        # Handle cluster layer state
-        if action_json.get("intent") == "CLUSTER":
-            layer = action_json.get("parameters", {}).get("layer")
-            cluster_action = action_json.get("parameters", {}).get("action")
-            
-            if cluster_action == "ADD":
-                # Store that this layer has a cluster version
-                CLUSTER_STATE[layer] = True
-            elif cluster_action == "REMOVE":
-                # Remove the cluster state and indicate we should restore the original layer
-                CLUSTER_STATE[layer] = False
-                # Add a new action to restore the original layer
-                action_json["restore_original"] = {
-                    "layer": layer,
-                    "action": "ADD"
-                }
-        
-        return MapActionResponse(
-            response=f"I'll help you with that: {action}",
-            action=action_json
-        )
-    except Exception as e:
-        print(f"Error processing action: {str(e)}")
-        print(f"Error type: {type(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 def get_help_text():
     """Return a friendly formatted string of available actions."""
