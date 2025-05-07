@@ -152,26 +152,36 @@ export const handleMapAction = (
       break;
     case 'FILTER':
       if (parameters.layer && parameters.ids) {
-        // Filter the features based on the provided IDs
+        console.log('Processing FILTER intent with parameters:', parameters);
+        const source = map.getSource(parameters.layer);
+        if (!source) {
+          console.error('Layer not found:', parameters.layer);
+          return { error: `Layer ${parameters.layer} not found` };
+        }
+
+        console.log('Filtering features for layer:', parameters.layer);
         const filteredFeatures =
           geoJsonData[parameters.layer]?.features?.filter((feature: any) =>
             parameters.ids?.includes(feature.properties.id),
           ) || [];
 
-        // Update the layer with filtered features
-        if (map.getSource(parameters.layer)) {
-          (map.getSource(parameters.layer) as maplibregl.GeoJSONSource).setData(
-            {
-              type: 'FeatureCollection',
-              features: filteredFeatures,
-            },
-          );
-          result = {
-            success: `Filtered ${parameters.layer} to show ${filteredFeatures.length} features`,
-          };
-        } else {
-          result = { error: `Layer ${parameters.layer} not found` };
+        if (!filteredFeatures) {
+          console.error('No features found for layer:', parameters.layer);
+          return { error: `No features found for layer ${parameters.layer}` };
         }
+
+        console.log(
+          'Updating source with filtered features:',
+          filteredFeatures.length,
+        );
+        (source as maplibregl.GeoJSONSource).setData({
+          type: 'FeatureCollection',
+          features: filteredFeatures,
+        });
+
+        result = {
+          success: `Filtered ${parameters.layer} to show ${filteredFeatures.length} features`,
+        };
       } else {
         result = { error: 'Missing required parameters for filter action' };
       }

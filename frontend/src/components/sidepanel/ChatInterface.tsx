@@ -66,7 +66,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       // Use the combined query endpoint for both actions and queries
       const response = await ApiCalls.fetchNLQueryIds(message);
 
-      if (response?.type === 'action') {
+      if (response?.type === 'action' || response?.type === 'query') {
         if (response.action?.intent === 'HELP') {
           const helpResponse = await fetch(`${ApiCalls.getAPIUrl()}/help`);
           const helpData = await helpResponse.json();

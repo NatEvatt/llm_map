@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import os
+import time
 
 app = FastAPI()
 
@@ -35,8 +36,14 @@ DB_CONFIG = {
 OLLAMA_CONFIG = {
     "url": f"{os.environ.get('OLLAMA_HOST')}",
     "auth": HTTPBasicAuth(os.environ.get('OLLAMA_USERNAME'), os.environ.get('OLLAMA_PASSWORD')),
-    "model": os.environ.get('LLM_MODEL')
+    "model": os.environ.get('LLM_MODEL'),
+    "intent_model": 'phi:2.7b',
+    "actions_model": 'llama3.2:3b'
 }
+
+    # "intent_model": os.environ.get('LLM_MODEL_INTENT'),
+
+    # "actions_model": os.environ.get('LLM_MODEL_ACTIONS')
 
 CLUSTER_STATE = {}  # Track which layers have cluster versions
 
@@ -196,56 +203,34 @@ def natural_language_to_sql(nl_query):
     else:
         return "ERROR: Failed to get a valid response from the API.", None
 
-def detect_intent(nl_query: str) -> dict:
-    """Use LLM to determine if the input is an action or query."""
-    intent_prompt = f"""
-    Determine if the following user input is a map action or a data query.
-    Return a JSON object with:
-    - "type": either "action" or "query"
-    - "confidence": a number between 0 and 1 indicating confidence in the classification
-
-    Examples:
-    - "zoom in" -> {{"type": "action", "confidence": 0.95}}
-    - "show me all parks" -> {{"type": "query", "confidence": 0.95}}
-    - "make fountains red" -> {{"type": "action", "confidence": 0.9}}
-    - "find parks near fountains" -> {{"type": "query", "confidence": 0.9}}
-
-    User input: "{nl_query}"
-
-    Respond with only the JSON object, no other text.
-    """
-    
-    ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
-    response = requests.post(
-        ollama_url,
-        auth=OLLAMA_CONFIG["auth"],
-        json={"model": OLLAMA_CONFIG['model'], "prompt": intent_prompt, "stream": False}
-    )
-    
-    if response.status_code != 200:
-        raise HTTPException(status_code=500, detail="Failed to process intent with Ollama")
-
-    # Parse the response
-    response_data = response.json()
-    cleaned_response = response_data["response"].replace("```json", "").replace("```", "").strip()
-    return json.loads(cleaned_response)
-
 def handle_map_action(nl_query: str) -> dict:
     """Process a map action using the LLM."""
+    start_time = time.time()
     prompt = get_action_prompt(nl_query)
     ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
+    model = OLLAMA_CONFIG['actions_model']
     response = requests.post(
         ollama_url,
         auth=OLLAMA_CONFIG["auth"],
-        json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False}
+        json={"model": model, "prompt": prompt, "stream": False}
     )
-    
+
     if response.status_code != 200:
         raise HTTPException(status_code=500, detail="Failed to process action with Ollama")
 
     # Parse the response
     response_data = response.json()
-    cleaned_response = response_data["response"].replace("```json", "").replace("```", "").strip()
+    
+    # Extract JSON object from the response
+    response_text = response_data["response"]
+    # Find the first occurrence of a JSON object
+    json_start = response_text.find('{')
+    json_end = response_text.rfind('}') + 1
+    if json_start != -1 and json_end != -1:
+        cleaned_response = response_text[json_start:json_end]
+    else:
+        raise HTTPException(status_code=500, detail="No valid JSON found in response")
+    
     action_json = json.loads(cleaned_response)
     
     # Handle cluster layer state
@@ -261,18 +246,29 @@ def handle_map_action(nl_query: str) -> dict:
                 "layer": layer,
                 "action": "ADD"
             }
+    end_time = time.time()
+    print(f"Map action processing took {end_time - start_time:.2f} seconds")
     
+    # Use the type from the LLM response
     return {
-        "type": "action",
+        "type": action_json.get("type", "action"),  # Default to "action" if not specified
         "action": action_json
     }
 
 def handle_data_query(nl_query: str) -> dict:
     """Process a data query using the LLM and PostGIS."""
+    start_time = time.time()
     sql_query, primary_layer = natural_language_to_sql(nl_query)
+    sql_end_time = time.time()
+    print(f"SQL generation took {sql_end_time - start_time:.2f} seconds")
+    
     ids = query_postgis(sql_query)
+    end_time = time.time()
+    print(f"PostGIS query took {end_time - sql_end_time:.2f} seconds")
+    print(f"Total data query processing took {end_time - start_time:.2f} seconds")
+    
     return {
-        "type": "action",  # Keep as action type for compatibility
+        "type": "query",  # Changed from "action" to "query"
         "action": {
             "intent": "FILTER",
             "parameters": {
@@ -287,17 +283,10 @@ def handle_data_query(nl_query: str) -> dict:
 def get_action_prompt(action):
     """Return the prompt for the action."""
     prompt = f"""
+    IMPORTANT: Respond with ONLY a JSON object. Do not include any explanations, markdown formatting, or additional text.
+
     Convert the following natural language input into a structured JSON format.
     First, determine if this is a map action or a data query.
-    
-    If it's a data query (e.g., "show me all parks", "find fountains near parks"), respond with:
-    {{
-        "type": "query",
-        "intent": "FILTER",
-        "parameters": {{
-            "nl_query": "the original query"
-        }}
-    }}
 
     If it's a map action, respond with:
     {{
@@ -370,53 +359,28 @@ Available actions and their parameters:
 
     Input: {action}
 
-    Respond with only the JSON object, no other text.
+    REMEMBER: Respond with ONLY the JSON object, no other text or formatting.
     """
     return prompt
 
 @app.get("/query")
-def query_map(nl_query: str = Query(..., description="Natural language query")):
-    """Process a natural language input as either a map action or data query."""
+def query(nl_query: str = Query(..., description="Natural language query")):
+    """Process a natural language input using intent-based routing."""
     try:
-        # Use single LLM call to determine intent and process
-        prompt = get_action_prompt(nl_query)
-        ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
-        response = requests.post(
-            ollama_url,
-            auth=OLLAMA_CONFIG["auth"],
-            json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False}
-        )
+        intent = route_by_intent(nl_query)
+        print(f"Intent: {intent}")
+        # return JSONResponse(content={"intent": intent})
         
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Failed to process query with Ollama")
-
-        # Parse the response
-        response_data = response.json()
-        cleaned_response = response_data["response"].replace("```json", "").replace("```", "").strip()
-        result = json.loads(cleaned_response)
-        
-        # Process based on type
-        if result["type"] == "query":
-            return JSONResponse(content=handle_data_query(result["parameters"]["nl_query"]))
-        else:
-            # Handle cluster layer state for actions
-            if result["intent"] == "CLUSTER":
-                layer = result["parameters"].get("layer")
-                cluster_action = result["parameters"].get("action")
-                
-                if cluster_action == "ADD":
-                    CLUSTER_STATE[layer] = True
-                elif cluster_action == "REMOVE":
-                    CLUSTER_STATE[layer] = False
-                    result["restore_original"] = {
-                        "layer": layer,
-                        "action": "ADD"
-                    }
-            
-            return JSONResponse(content={
-                "type": "action",
-                "action": result
-            })
+        # Route to appropriate handler based on intent
+        if intent == "FILTER":
+            return JSONResponse(content=handle_data_query(nl_query))
+        elif intent == "HELP":
+            return JSONResponse(content={"type": "action", "action": {
+                "intent": "HELP",
+                "parameters": {"type": "actions"}
+            }})
+        else:  # ACTION
+            return JSONResponse(content=handle_map_action(nl_query))
             
     except Exception as e:
         print(f"Error processing query: {str(e)}")
@@ -625,3 +589,81 @@ def get_help_text():
 async def get_help():
     """Return a friendly formatted string of available actions."""
     return {"response": get_help_text()}
+
+def get_intent_prompt(query: str) -> str:
+    """Return a simple prompt for determining the intent of a query."""
+    prompt = f"""
+    Classify this query into exactly one word: ACTION, FILTER, or HELP.
+
+    Important: only respond with one word, no other text or punctuation.
+
+    Query: {query}
+
+    Examples:
+    "zoom in" -> ACTION
+    "show me all parks" -> FILTER
+    "what can I do" -> HELP
+    "make fountains red" -> ACTION
+    "find cycle paths near parks" -> FILTER
+    "help" -> HELP
+    "make parks green" -> ACTION
+    "show me the cycle paths layer" -> FILTER
+    "what can i do with this map?" -> HELP
+
+    Your response (one word only):"""
+    return prompt
+
+def route_by_intent(nl_query: str) -> str:
+    """Use a lightweight LLM call to determine the intent of a query."""
+    try:
+        start_time = time.time()
+        prompt = get_intent_prompt(nl_query)
+        ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
+        model = OLLAMA_CONFIG['model']
+        print('getting intent from:', model)
+        response = requests.post(
+            ollama_url,
+            auth=OLLAMA_CONFIG["auth"],
+            json={"model": model, "prompt": prompt, "stream": False}
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to determine intent with Ollama")
+
+        # Parse the response
+        response_data = response.json()
+        print('Raw response:', response_data)
+        
+        # Extract the intent from the response
+        intent_text = response_data["response"].strip()
+        print('Intent text:', intent_text)
+        # Try to extract word from quotes if the response contains "then the output would be"
+        if "then the output would be" in intent_text.lower():
+            import re
+            match = re.search(r"'([A-Z]+)'", intent_text)
+            if match:
+                intent = match.group(1)
+            else:
+                # Fallback to original logic if no match found
+                intent = intent_text.split()[0].upper() if intent_text else "ACTION"
+        else:
+            # Use original logic for other cases
+            intent = intent_text.split()[0].upper() if intent_text else "ACTION"
+        
+        # Remove any non-alphabetic characters
+        intent = ''.join(c for c in intent if c.isalpha())
+        
+        # Validate the intent
+        if intent not in ["ACTION", "FILTER", "HELP"]:
+            print(f"Unexpected intent response: {intent}, defaulting to ACTION")
+            intent = "ACTION"
+        
+        end_time = time.time()
+        print(f"Intent determination took {end_time - start_time:.2f} seconds")
+            
+        return intent
+            
+    except Exception as e:
+        print(f"Error determining intent: {str(e)}")
+        # Default to ACTION on error
+        return "ACTION"
