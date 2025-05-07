@@ -7,13 +7,7 @@ import React, {
   ChangeEvent,
 } from 'react';
 import { ApiCalls } from '../../utils/apiCalls';
-
-const spinnerStyles = `
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-`;
+import '../../styles/ChatInterface.css';
 
 interface ChatInterfaceProps {
   onActionResponse: (response: any) => {
@@ -58,67 +52,88 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [messageHistory]);
 
+  const createMessageObject = (
+    message: string,
+    response: any,
+    type: 'action' | 'query',
+    options: {
+      saved?: boolean;
+      error?: string;
+      success?: string;
+      helpText?: string;
+    } = {},
+  ): Message => ({
+    message,
+    response,
+    type,
+    ...options,
+  });
+
+  const handleHelpResponse = async (
+    message: string,
+    response: any,
+  ): Promise<Message> => {
+    const helpResponse = await fetch(`${ApiCalls.getAPIUrl()}/help`);
+    const helpData = await helpResponse.json();
+    return createMessageObject(message, response, 'action', {
+      success: "Here's what you can do:",
+      helpText: helpData.response,
+    });
+  };
+
+  const handleFilterResponse = (message: string, response: any): Message => {
+    const result = onActionResponse(response);
+    return createMessageObject(message, response, 'query', {
+      saved: false,
+      error: result?.error,
+      success: result?.success,
+    });
+  };
+
+  const handleActionResponse = (message: string, response: any): Message => {
+    const result = onActionResponse(response);
+    return createMessageObject(message, response, 'action', {
+      error: result?.error,
+      success: result?.success,
+    });
+  };
+
+  const handleQueryResponse = (message: string, response: any): Message => {
+    return createMessageObject(message, response, 'query', {
+      saved: false,
+    });
+  };
+
+  const handleError = (message: string): Message => {
+    return createMessageObject(message, null, 'query', {
+      error: 'An error occurred while processing your request.',
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // Use the combined query endpoint for both actions and queries
       const response = await ApiCalls.fetchNLQueryIds(message);
+      let messageObj: Message;
 
       if (response?.type === 'action' || response?.type === 'query') {
         if (response.action?.intent === 'HELP') {
-          const helpResponse = await fetch(`${ApiCalls.getAPIUrl()}/help`);
-          const helpData = await helpResponse.json();
-          const messageObj: Message = {
-            message,
-            response,
-            type: 'action',
-            success: "Here's what you can do:",
-            helpText: helpData.response,
-          };
-          setMessageHistory((prev) => [...prev, messageObj]);
+          messageObj = await handleHelpResponse(message, response);
         } else if (response.action?.intent === 'FILTER') {
-          // Handle filter intent as a query that can be saved
-          const result = onActionResponse(response);
-          const messageObj: Message = {
-            message,
-            response,
-            type: 'query',
-            saved: false,
-            error: result?.error,
-            success: result?.success,
-          };
-          setMessageHistory((prev) => [...prev, messageObj]);
+          messageObj = handleFilterResponse(message, response);
         } else {
-          const result = onActionResponse(response);
-          const messageObj: Message = {
-            message,
-            response,
-            type: 'action',
-            error: result?.error,
-            success: result?.success,
-          };
-          setMessageHistory((prev) => [...prev, messageObj]);
+          messageObj = handleActionResponse(message, response);
         }
       } else {
-        // Handle successful query
-        const messageObj: Message = {
-          message,
-          response,
-          type: 'query',
-          saved: false,
-        };
-        setMessageHistory((prev) => [...prev, messageObj]);
+        messageObj = handleQueryResponse(message, response);
       }
+
+      setMessageHistory((prev) => [...prev, messageObj]);
     } catch (error) {
       console.error('Error processing message:', error);
-      const errorMessage: Message = {
-        message,
-        response: null,
-        type: 'query',
-        error: 'An error occurred while processing your request.',
-      };
+      const errorMessage = handleError(message);
       setMessageHistory((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
@@ -155,154 +170,63 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: 'calc(100vh - 80px - 100px)',
-      }}
-      className="chatInterface"
-    >
-      <style>{spinnerStyles}</style>
-      <div
-        ref={chatDisplayRef}
-        className="chatDisplay"
-        style={{
-          height: '100%',
-          overflowY: 'auto',
-          padding: '8px',
-          border: '1px solid #ccc',
-          borderRadius: '4px',
-          backgroundColor: '#f8f9fa',
-          marginBottom: '16px',
-          position: 'relative',
-        }}
-      >
+    <div className="chatInterface">
+      <div ref={chatDisplayRef} className="chatDisplay">
         {messageHistory.map((item, index) => (
-          <div
-            key={index}
-            style={{
-              marginBottom: '12px',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
-              You: {item.message}
-            </div>
-            {/* Show save button for unsaved queries, checkmark for saved ones */}
+          <div key={index} className="messageContainer">
+            <div className="messageHeader">You: {item.message}</div>
             {item.type === 'query' &&
               (item.saved ? (
-                <span
-                  title="Query saved"
-                  style={{
-                    marginLeft: 8,
-                    color: 'green',
-                    fontSize: '1.2em',
-                  }}
-                >
+                <span title="Query saved" className="savedCheckmark">
                   ✓
                 </span>
               ) : (
                 <button
                   title="Save this query"
                   onClick={() => handleSaveMessage(index)}
-                  style={{
-                    marginLeft: 8,
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: '1.2em',
-                  }}
+                  className="saveButton"
                 >
                   💾
                 </button>
               ))}
             {item.error && (
-              <div style={{ color: 'red', marginBottom: '4px' }}>
-                Error: {item.error}
-              </div>
+              <div className="errorMessage">Error: {item.error}</div>
             )}
-            {item.helpText && (
-              <div style={{ marginTop: '8px', whiteSpace: 'pre-line' }}>
-                {item.helpText}
-              </div>
-            )}
+            {item.helpText && <div className="helpText">{item.helpText}</div>}
             {item.success && !item.helpText && (
-              <div style={{ color: 'green', marginBottom: '4px' }}>
-                {item.success}
-              </div>
+              <div className="successMessage">{item.success}</div>
             )}
           </div>
         ))}
         {isLoading && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '20px',
-              right: '20px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              backgroundColor: 'rgba(255, 255, 255, 0.9)',
-              padding: '8px 16px',
-              borderRadius: '20px',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            }}
-          >
-            <div
-              style={{
-                width: '20px',
-                height: '20px',
-                border: '3px solid #f3f3f3',
-                borderTop: '3px solid #3498db',
-                borderRadius: '50%',
-                animation: 'spin 1s linear infinite',
-              }}
-            />
+          <div className="loadingSpinner">
+            <div className="spinner" />
             <span>Processing...</span>
           </div>
         )}
       </div>
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '8px' }}>
+      <form onSubmit={handleSubmit} className="messageForm">
         <textarea
           placeholder="Type your message or action... (e.g., 'show me all parks' or 'make fountains red')"
           onKeyDown={handleKeyDown}
           onChange={handleInputChange}
           value={message}
           disabled={isLoading}
-          style={{
-            flex: 1,
-            padding: '8px',
-            height: '100px',
-            resize: 'none',
-            border: '1px solid #cccccc',
-            opacity: isLoading ? 0.7 : 1,
-          }}
+          className="messageTextarea"
         />
-        <button
-          type="submit"
-          disabled={isLoading}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#f8f9fa',
-            border: '1px solid #cccccc',
-            opacity: isLoading ? 0.7 : 1,
-            cursor: isLoading ? 'not-allowed' : 'pointer',
-          }}
-        >
+        <button type="submit" disabled={isLoading} className="sendButton">
           Send
         </button>
       </form>
 
       {submittedQuery && (
-        <div style={{ marginTop: '16px' }}>
+        <div className="queryContainer">
           <div id="query-container">
             <h3>Query:</h3>
             <div>{submittedQuery}</div>
             <button
-              style={{ padding: '8px 16px', marginTop: '8px' }}
+              className="saveQueryButton"
               onClick={() => {
                 const lastMessage = messageHistory[messageHistory.length - 1];
                 if (

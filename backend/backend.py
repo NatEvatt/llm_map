@@ -202,7 +202,7 @@ def handle_map_action(nl_query: str) -> dict:
     start_time = time.time()
     prompt = get_action_prompt(nl_query)
     ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
-    model = OLLAMA_CONFIG['actions_model']
+    model = OLLAMA_CONFIG['model']
     response = requests.post(
         ollama_url,
         auth=OLLAMA_CONFIG["auth"],
