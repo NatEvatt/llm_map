@@ -30,7 +30,6 @@ const Map: React.FC<MapProps> = ({
   onActionResult,
   activeLayers,
 }) => {
-  console.log('Map component rendering with actionResponse:', actionResponse);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
 
@@ -79,18 +78,15 @@ const Map: React.FC<MapProps> = ({
 
   useEffect(() => {
     if (actionResponse && mapRef.current) {
-      console.log('Map received actionResponse:', actionResponse);
       let result: { error?: string; success?: string } = {};
       // Handle both 'action' and 'query' types
       if (actionResponse.type === 'action' || actionResponse.type === 'query') {
-        console.log('Processing action response with handleMapAction');
         result = handleMapAction(
           mapRef.current,
           actionResponse,
           geoJsonData,
           ApiCalls.getLayerPopupProperties,
         );
-        console.log('handleMapAction result:', result);
       } else {
         console.log(
           'Action response type not recognized:',

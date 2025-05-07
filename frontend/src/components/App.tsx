@@ -66,7 +66,6 @@ const App: React.FC = () => {
 
     try {
       const data = await ApiCalls.fetchNLQueryIds(message);
-      console.log('Server response:', data);
 
       // Set individual state values
       setIds(data.action.parameters.ids);
@@ -74,9 +73,7 @@ const App: React.FC = () => {
       setPrimaryLayer(data.action.parameters.primary_layer);
 
       // Set the action response directly from the API
-      console.log('Setting action response:', data);
       setActionResponse(data);
-      console.log('Action response state updated');
 
       setSubmittedQuery(message);
     } catch (error) {

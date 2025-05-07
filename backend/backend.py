@@ -37,13 +37,7 @@ OLLAMA_CONFIG = {
     "url": f"{os.environ.get('OLLAMA_HOST')}",
     "auth": HTTPBasicAuth(os.environ.get('OLLAMA_USERNAME'), os.environ.get('OLLAMA_PASSWORD')),
     "model": os.environ.get('LLM_MODEL'),
-    "intent_model": 'phi:2.7b',
-    "actions_model": 'llama3.2:3b'
 }
-
-    # "intent_model": os.environ.get('LLM_MODEL_INTENT'),
-
-    # "actions_model": os.environ.get('LLM_MODEL_ACTIONS')
 
 CLUSTER_STATE = {}  # Track which layers have cluster versions
 
@@ -188,7 +182,7 @@ def natural_language_to_sql(nl_query):
         if match:
             sql_query = match.group(0).strip()
             sql_query = sql_query.replace('\\n', ' ').replace('\\u003e', '>').replace('\\u003c', '<')
-            print('the response is:', sql_query)
+            print('the sql response is:', sql_query)
             
             # Extract the primary layer from the SQL comment
             primary_layer_match = re.search(r"-- primary_layer: (\w+)", response.text)
@@ -369,8 +363,6 @@ def query(nl_query: str = Query(..., description="Natural language query")):
     try:
         intent = route_by_intent(nl_query)
         print(f"Intent: {intent}")
-        # return JSONResponse(content={"intent": intent})
-        
         # Route to appropriate handler based on intent
         if intent == "FILTER":
             return JSONResponse(content=handle_data_query(nl_query))
@@ -620,7 +612,6 @@ def route_by_intent(nl_query: str) -> str:
         prompt = get_intent_prompt(nl_query)
         ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
         model = OLLAMA_CONFIG['model']
-        print('getting intent from:', model)
         response = requests.post(
             ollama_url,
             auth=OLLAMA_CONFIG["auth"],
@@ -632,7 +623,6 @@ def route_by_intent(nl_query: str) -> str:
 
         # Parse the response
         response_data = response.json()
-        print('Raw response:', response_data)
         
         # Extract the intent from the response
         intent_text = response_data["response"].strip()
