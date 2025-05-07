@@ -66,26 +66,16 @@ const App: React.FC = () => {
 
     try {
       const data = await ApiCalls.fetchNLQueryIds(message);
-      setIds(data.ids);
-      setSqlQuery(data.sql_query);
-      setPrimaryLayer(data.primary_layer);
-      console.log('SQL Query:', data.sql_query);
-      const layer = data.primary_layer;
 
-      const filteredFeatures =
-        allFeatures?.[layer]?.features?.filter((feature: any) =>
-          data.ids.includes(feature.properties.id),
-        ) || [];
+      // Set individual state values
+      setIds(data.action.parameters.ids);
+      setSqlQuery(data.action.parameters.sql_query);
+      setPrimaryLayer(data.action.parameters.primary_layer);
 
-      setGeoJsonData((previousGeoJsonData) => ({
-        ...previousGeoJsonData,
-        [layer]: {
-          type: 'FeatureCollection',
-          features: filteredFeatures,
-        },
-      }));
+      // Set the action response directly from the API
+      setActionResponse(data);
+
       setSubmittedQuery(message);
-      console.log('Server response:', data);
     } catch (error) {
       console.error('Error sending message:', error);
     } finally {
@@ -99,9 +89,13 @@ const App: React.FC = () => {
     setMessage(e.target.value);
   };
 
-  const handleSaveQuery = () => {
-    console.log('Save query');
-    ApiCalls.saveQuery(submittedQuery, sqlQuery, primaryLayer)
+  const handleSaveQuery = (
+    nlQuery: string,
+    sqlQuery: string,
+    primaryLayer: string,
+  ) => {
+    console.log('Save query', { nlQuery, sqlQuery, primaryLayer });
+    ApiCalls.saveQuery(nlQuery, sqlQuery, primaryLayer)
       .then((response) => {
         console.log('Query saved successfully:', response);
       })
@@ -154,6 +148,11 @@ const App: React.FC = () => {
     fetchGeoJsonData();
   }, []);
 
+  // Add a useEffect to monitor actionResponse changes
+  useEffect(() => {
+    console.log('App component actionResponse changed:', actionResponse);
+  }, [actionResponse]);
+
   return (
     <div>
       <header>
@@ -191,6 +190,7 @@ const App: React.FC = () => {
               geoJsonData={geoJsonData || {}}
               actionResponse={actionResponse}
               onActionResult={(result) => {
+                console.log('Map component returned result:', result);
                 return result;
               }}
               activeLayers={activeLayers}

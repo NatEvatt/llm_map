@@ -1,0 +1,124 @@
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.chatInterface {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 80px - 100px);
+}
+
+.chatDisplay {
+  height: 100%;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: #f8f9fa;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.messageContainer {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.messageHeader {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.errorMessage {
+  color: red;
+  margin-bottom: 4px;
+}
+
+.helpText {
+  margin-top: 8px;
+  white-space: pre-line;
+}
+
+.successMessage {
+  color: green;
+  margin-bottom: 4px;
+}
+
+.loadingSpinner {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 8px 16px;
+  border-radius: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.messageForm {
+  display: flex;
+  gap: 8px;
+}
+
+.messageTextarea {
+  flex: 1;
+  padding: 8px;
+  height: 100px;
+  resize: none;
+  border: 1px solid #cccccc;
+}
+
+.messageTextarea:disabled {
+  opacity: 0.7;
+}
+
+.sendButton {
+  padding: 8px 16px;
+  background-color: #f8f9fa;
+  border: 1px solid #cccccc;
+}
+
+.sendButton:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.saveButton {
+  margin-left: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2em;
+}
+
+.savedCheckmark {
+  margin-left: 8px;
+  color: green;
+  font-size: 1.2em;
+}
+
+.queryContainer {
+  margin-top: 16px;
+}
+
+.saveQueryButton {
+  padding: 8px 16px;
+  margin-top: 8px;
+}

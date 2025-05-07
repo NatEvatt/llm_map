@@ -78,13 +78,27 @@ const Map: React.FC<MapProps> = ({
 
   useEffect(() => {
     if (actionResponse && mapRef.current) {
-      const result = handleMapAction(
-        mapRef.current,
-        actionResponse,
-        geoJsonData,
-        ApiCalls.getLayerPopupProperties,
-      );
+      let result: { error?: string; success?: string } = {};
+      // Handle both 'action' and 'query' types
+      if (actionResponse.type === 'action' || actionResponse.type === 'query') {
+        result = handleMapAction(
+          mapRef.current,
+          actionResponse,
+          geoJsonData,
+          ApiCalls.getLayerPopupProperties,
+        );
+      } else {
+        console.log(
+          'Action response type not recognized:',
+          actionResponse.type,
+        );
+      }
       onActionResult(result);
+    } else {
+      console.log('No actionResponse or map not ready:', {
+        hasActionResponse: !!actionResponse,
+        hasMap: !!mapRef.current,
+      });
     }
   }, [actionResponse]);
 
