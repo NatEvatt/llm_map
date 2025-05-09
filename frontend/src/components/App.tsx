@@ -5,6 +5,8 @@ import Map from './Map';
 import NavBar from './NavBar';
 import SidePanel from './sidepanel/SidePanel';
 import About from '../pages/About';
+import Documentation from '../pages/Documentation';
+import Settings from '../pages/Settings';
 import { ApiCalls } from '../utils/apiCalls';
 import MAPTILER_API_KEY from '../config';
 
@@ -207,6 +209,8 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/" element={<MapPage />} />
             <Route path="/about" element={<About />} />
+            <Route path="/documentation" element={<Documentation />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
       </div>
