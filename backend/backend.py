@@ -9,9 +9,10 @@ from geojson import Feature, FeatureCollection
 import re
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Literal
 import os
 import time
+import openai
 
 app = FastAPI()
 
@@ -33,11 +34,64 @@ DB_CONFIG = {
     "port": os.environ.get('POSTGRES_PORT')
 }
 
+# LLM Configuration
+LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'ollama')  # Default to ollama if not specified
+
 OLLAMA_CONFIG = {
     "url": f"{os.environ.get('OLLAMA_HOST')}",
     "auth": HTTPBasicAuth(os.environ.get('OLLAMA_USERNAME'), os.environ.get('OLLAMA_PASSWORD')),
     "model": os.environ.get('LLM_MODEL'),
 }
+
+AZURE_CONFIG = {
+    "api_key": os.environ.get('AZURE_OPENAI_API_KEY'),
+    "api_version": os.environ.get('AZURE_OPENAI_API_VERSION', '2024-02-15-preview'),
+    "endpoint": os.environ.get('AZURE_OPENAI_ENDPOINT'),
+    "deployment_name": os.environ.get('AZURE_OPENAI_DEPLOYMENT_NAME'),
+}
+
+class LLMService:
+    def __init__(self, provider: Literal['ollama', 'azure'] = 'ollama'):
+        self.provider = provider
+        if provider == 'azure':
+            openai.api_type = "azure"
+            openai.api_base = AZURE_CONFIG['endpoint']
+            openai.api_version = AZURE_CONFIG['api_version']
+            openai.api_key = AZURE_CONFIG['api_key']
+    
+    def generate_response(self, prompt: str) -> str:
+        if self.provider == 'ollama':
+            return self._generate_ollama_response(prompt)
+        else:
+            return self._generate_azure_response(prompt)
+    
+    def _generate_ollama_response(self, prompt: str) -> str:
+        ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
+        response = requests.post(
+            ollama_url,
+            auth=OLLAMA_CONFIG["auth"],
+            json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False}
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to get response from Ollama")
+        
+        return response.json()["response"]
+    
+    def _generate_azure_response(self, prompt: str) -> str:
+        try:
+            response = openai.ChatCompletion.create(
+                engine=AZURE_CONFIG['deployment_name'],
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=800
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to get response from Azure OpenAI: {str(e)}")
+
+# Initialize LLM service
+llm_service = LLMService(provider=LLM_PROVIDER)
 
 CLUSTER_STATE = {}  # Track which layers have cluster versions
 
@@ -174,80 +228,74 @@ def get_sql_prompt(nl_query):
 def natural_language_to_sql(nl_query):
     """Convert NL query to SQL using a local Ollama LLM."""
     prompt = get_sql_prompt(nl_query)
-    ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"  
-    response = requests.post(ollama_url, auth=OLLAMA_CONFIG["auth"] ,json={"model": OLLAMA_CONFIG['model'], "prompt": prompt, "stream": False})
+    response = llm_service.generate_response(prompt)
     
-    if response.status_code == 200:
-        match = re.search(r"SELECT.*?;", response.text, re.DOTALL)
-        if match:
-            sql_query = match.group(0).strip()
-            sql_query = sql_query.replace('\\n', ' ').replace('\\u003e', '>').replace('\\u003c', '<')
-            print('the sql response is:', sql_query)
-            
-            # Extract the primary layer from the SQL comment
-            primary_layer_match = re.search(r"-- primary_layer: (\w+)", response.text)
-            primary_layer = primary_layer_match.group(1) if primary_layer_match else None
-            
-            if "id" not in sql_query.lower():
-                sql_query = sql_query.replace("SELECT", "SELECT id, ", 1)
-            sql_query = f"SELECT id FROM ({sql_query[:-1]}) AS subquery;"
-            return sql_query, primary_layer
-        else:
-            return "ERROR: SQL query not found in the response.", None
+    if response:
+        # Clean up the response by removing markdown formatting
+        sql_query = response.strip()
+        # Remove markdown code block if present
+        sql_query = re.sub(r'^```sql\s*', '', sql_query)
+        sql_query = re.sub(r'\s*```$', '', sql_query)
+        print('the sql response is:', sql_query)
+        
+        # Extract the primary layer from the SQL comment
+        primary_layer_match = re.search(r"-- primary_layer: (\w+)", sql_query)
+        primary_layer = primary_layer_match.group(1) if primary_layer_match else None
+        
+        if "id" not in sql_query.lower():
+            sql_query = sql_query.replace("SELECT", "SELECT id, ", 1)
+        sql_query = f"SELECT id FROM ({sql_query[:-1]}) AS subquery;"
+        return sql_query, primary_layer
     else:
-        return "ERROR: Failed to get a valid response from the API.", None
+        return "ERROR: SQL query not found in the response.", None
 
 def handle_map_action(nl_query: str) -> dict:
     """Process a map action using the LLM."""
     start_time = time.time()
     prompt = get_action_prompt(nl_query)
-    ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
-    model = OLLAMA_CONFIG['model']
-    response = requests.post(
-        ollama_url,
-        auth=OLLAMA_CONFIG["auth"],
-        json={"model": model, "prompt": prompt, "stream": False}
-    )
+    response = llm_service.generate_response(prompt)
 
-    if response.status_code != 200:
-        raise HTTPException(status_code=500, detail="Failed to process action with Ollama")
-
-    # Parse the response
-    response_data = response.json()
-    
-    # Extract JSON object from the response
-    response_text = response_data["response"]
-    # Find the first occurrence of a JSON object
-    json_start = response_text.find('{')
-    json_end = response_text.rfind('}') + 1
-    if json_start != -1 and json_end != -1:
-        cleaned_response = response_text[json_start:json_end]
-    else:
-        raise HTTPException(status_code=500, detail="No valid JSON found in response")
-    
-    action_json = json.loads(cleaned_response)
-    
-    # Handle cluster layer state
-    if action_json.get("intent") == "CLUSTER":
-        layer = action_json.get("parameters", {}).get("layer")
-        cluster_action = action_json.get("parameters", {}).get("action")
+    if response:
+        try:
+            # First try to parse the response directly as JSON
+            action_json = json.loads(response)
+        except json.JSONDecodeError:
+            # If that fails, try to parse it as a wrapped response
+            response_data = json.loads(response)
+            response_text = response_data["response"]
+            # Find the first occurrence of a JSON object
+            json_start = response_text.find('{')
+            json_end = response_text.rfind('}') + 1
+            if json_start != -1 and json_end != -1:
+                cleaned_response = response_text[json_start:json_end]
+                print('the cleaned response is:', cleaned_response)
+                action_json = json.loads(cleaned_response)
+            else:
+                raise HTTPException(status_code=500, detail="No valid JSON found in response")
         
-        if cluster_action == "ADD":
-            CLUSTER_STATE[layer] = True
-        elif cluster_action == "REMOVE":
-            CLUSTER_STATE[layer] = False
-            action_json["restore_original"] = {
-                "layer": layer,
-                "action": "ADD"
-            }
-    end_time = time.time()
-    print(f"Map action processing took {end_time - start_time:.2f} seconds")
-    
-    # Use the type from the LLM response
-    return {
-        "type": action_json.get("type", "action"),  # Default to "action" if not specified
-        "action": action_json
-    }
+        # Handle cluster layer state
+        if action_json.get("intent") == "CLUSTER":
+            layer = action_json.get("parameters", {}).get("layer")
+            cluster_action = action_json.get("parameters", {}).get("action")
+            
+            if cluster_action == "ADD":
+                CLUSTER_STATE[layer] = True
+            elif cluster_action == "REMOVE":
+                CLUSTER_STATE[layer] = False
+                action_json["restore_original"] = {
+                    "layer": layer,
+                    "action": "ADD"
+                }
+        end_time = time.time()
+        print(f"Map action processing took {end_time - start_time:.2f} seconds")
+        
+        # Use the type from the LLM response
+        return {
+            "type": action_json.get("type", "action"),  # Default to "action" if not specified
+            "action": action_json
+        }
+    else:
+        raise HTTPException(status_code=500, detail="Failed to process action with LLM")
 
 def handle_data_query(nl_query: str) -> dict:
     """Process a data query using the LLM and PostGIS."""
@@ -362,7 +410,7 @@ def query(nl_query: str = Query(..., description="Natural language query")):
     """Process a natural language input using intent-based routing."""
     try:
         intent = route_by_intent(nl_query)
-        print(f"Intent: {intent}")
+        print(f"Intent  I am in this one: {intent}")
         # Route to appropriate handler based on intent
         if intent == "FILTER":
             return JSONResponse(content=handle_data_query(nl_query))
@@ -610,48 +658,50 @@ def route_by_intent(nl_query: str) -> str:
     try:
         start_time = time.time()
         prompt = get_intent_prompt(nl_query)
-        ollama_url = f"{OLLAMA_CONFIG['url']}/api/generate"
-        model = OLLAMA_CONFIG['model']
-        response = requests.post(
-            ollama_url,
-            auth=OLLAMA_CONFIG["auth"],
-            json={"model": model, "prompt": prompt, "stream": False}
-        )
+        response = llm_service.generate_response(prompt)
         
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail="Failed to determine intent with Ollama")
-
-        # Parse the response
-        response_data = response.json()
-        
-        # Extract the intent from the response
-        intent_text = response_data["response"].strip()
-        print('Intent text:', intent_text)
-        # Try to extract word from quotes if the response contains "then the output would be"
-        if "then the output would be" in intent_text.lower():
-            import re
-            match = re.search(r"'([A-Z]+)'", intent_text)
-            if match:
-                intent = match.group(1)
-            else:
-                # Fallback to original logic if no match found
-                intent = intent_text.split()[0].upper() if intent_text else "ACTION"
-        else:
-            # Use original logic for other cases
-            intent = intent_text.split()[0].upper() if intent_text else "ACTION"
-        
-        # Remove any non-alphabetic characters
-        intent = ''.join(c for c in intent if c.isalpha())
-        
-        # Validate the intent
-        if intent not in ["ACTION", "FILTER", "HELP"]:
-            print(f"Unexpected intent response: {intent}, defaulting to ACTION")
-            intent = "ACTION"
-        
-        end_time = time.time()
-        print(f"Intent determination took {end_time - start_time:.2f} seconds")
+        if response:
+            print('the response is:', response)
+            print('the response is not none')
             
-        return intent
+            # Try to parse as JSON first (Ollama case)
+            try:
+                response_data = json.loads(response)
+                intent_text = response_data["response"].strip()
+            except (json.JSONDecodeError, KeyError):
+                # If not JSON or no response field, use the string directly (Azure case)
+                intent_text = response.strip()
+            
+            print('the intent text is:', intent_text)
+            
+            # Try to extract word from quotes if the response contains "then the output would be"
+            if "then the output would be" in intent_text.lower():
+                import re
+                match = re.search(r"'([A-Z]+)'", intent_text)
+                if match:
+                    intent = match.group(1)
+                else:
+                    # Fallback to original logic if no match found
+                    intent = intent_text.split()[0].upper() if intent_text else "ACTION"
+            else:
+                # Use original logic for other cases
+                intent = intent_text.split()[0].upper() if intent_text else "ACTION"
+            
+            # Remove any non-alphabetic characters
+            intent = ''.join(c for c in intent if c.isalpha())
+            
+            # Validate the intent
+            if intent not in ["ACTION", "FILTER", "HELP"]:
+                print(f"Unexpected intent response: {intent}, defaulting to ACTION")
+                intent = "ACTION"
+            
+            end_time = time.time()
+            print(f"Intent determination took {end_time - start_time:.2f} seconds")
+            
+            return intent
+            
+        else:
+            raise HTTPException(status_code=500, detail="Failed to determine intent with LLM")
             
     except Exception as e:
         print(f"Error determining intent: {str(e)}")
