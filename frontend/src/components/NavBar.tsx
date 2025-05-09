@@ -1,19 +1,25 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import '../styles/NavBar.css'; // Optional: Add styles for the NavBar
 
 const NavBar: React.FC = () => {
   return (
     <nav>
-      <img src="images/llm_map_logo.svg" alt="Logo" className="logo" />
+      <Link to="/">
+        <img src="images/llm_map_logo.svg" alt="Logo" className="logo" />
+      </Link>
       <ul>
         <li>
-          <a href="#">Home</a>
+          <Link to="/">Home</Link>
         </li>
         <li>
-          <a href="#">About</a>
+          <Link to="/about">About</Link>
         </li>
         <li>
-          <a href="#">Contact</a>
+          <Link to="/documentation">Documentation</Link>
+        </li>
+        <li>
+          <Link to="/settings">Settings</Link>
         </li>
       </ul>
     </nav>
