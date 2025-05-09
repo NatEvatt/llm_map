@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import '../styles/App.css';
 import Map from './Map';
 import NavBar from './NavBar';
 import SidePanel from './sidepanel/SidePanel';
+import About from '../pages/About';
 import { ApiCalls } from '../utils/apiCalls';
 import MAPTILER_API_KEY from '../config';
 
-const App: React.FC = () => {
+const MapPage: React.FC = () => {
   const [allFeatures, setAllFeatures] = useState<Record<string, any> | null>(
     null,
   );
@@ -154,51 +156,61 @@ const App: React.FC = () => {
   }, [actionResponse]);
 
   return (
-    <div>
-      <header>
-        <NavBar />
-      </header>
-
-      <main>
-        <div className="container">
-          <div className="column left">
-            <SidePanel
-              message={message}
-              onMessageChange={handleInputChange}
-              onSend={handleChatSubmit}
-              ids={ids}
-              submittedQuery={submittedQuery}
-              onSaveQuery={handleSaveQuery}
-              onLoadQuery={handleLoadQuery}
-              layers={getLayerInfo()}
-              onToggleLayer={handleToggleLayer}
-              onClearFilter={handleClearFilter}
-              onActionResponse={handleActionResponse}
-            />
+    <div className="container">
+      <div className="column left">
+        <SidePanel
+          message={message}
+          onMessageChange={handleInputChange}
+          onSend={handleChatSubmit}
+          ids={ids}
+          submittedQuery={submittedQuery}
+          onSaveQuery={handleSaveQuery}
+          onLoadQuery={handleLoadQuery}
+          layers={getLayerInfo()}
+          onToggleLayer={handleToggleLayer}
+          onClearFilter={handleClearFilter}
+          onActionResponse={handleActionResponse}
+        />
+      </div>
+      <div className="column right">
+        {loading && (
+          <div className="spinner-overlay">
+            <div className="spinner"></div>
           </div>
-          <div className="column right">
-            {loading && (
-              <div className="spinner-overlay">
-                <div className="spinner"></div>
-              </div>
-            )}
-            <Map
-              lat={51.50634440212}
-              lon={-0.1259234169603}
-              zoom={14}
-              apiKey={MAPTILER_API_KEY || ''}
-              geoJsonData={geoJsonData || {}}
-              actionResponse={actionResponse}
-              onActionResult={(result) => {
-                console.log('Map component returned result:', result);
-                return result;
-              }}
-              activeLayers={activeLayers}
-            />
-          </div>
-        </div>
-      </main>
+        )}
+        <Map
+          lat={51.50634440212}
+          lon={-0.1259234169603}
+          zoom={14}
+          apiKey={MAPTILER_API_KEY || ''}
+          geoJsonData={geoJsonData || {}}
+          actionResponse={actionResponse}
+          onActionResult={(result) => {
+            console.log('Map component returned result:', result);
+            return result;
+          }}
+          activeLayers={activeLayers}
+        />
+      </div>
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <Router>
+      <div>
+        <header>
+          <NavBar />
+        </header>
+        <main>
+          <Routes>
+            <Route path="/" element={<MapPage />} />
+            <Route path="/about" element={<About />} />
+          </Routes>
+        </main>
+      </div>
+    </Router>
   );
 };
 
