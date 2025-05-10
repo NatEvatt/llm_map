@@ -256,22 +256,48 @@ def handle_map_action(nl_query: str) -> dict:
     response = llm_service.generate_response(prompt)
 
     if response:
+        print(f"Raw LLM response: {response}")
+        action_json = None
+        
+        # Try Azure format first (direct JSON)
         try:
-            # First try to parse the response directly as JSON
             action_json = json.loads(response)
+            print("Successfully parsed as direct JSON (Azure format)")
         except json.JSONDecodeError:
-            # If that fails, try to parse it as a wrapped response
-            response_data = json.loads(response)
-            response_text = response_data["response"]
-            # Find the first occurrence of a JSON object
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            if json_start != -1 and json_end != -1:
-                cleaned_response = response_text[json_start:json_end]
-                print('the cleaned response is:', cleaned_response)
-                action_json = json.loads(cleaned_response)
-            else:
-                raise HTTPException(status_code=500, detail="No valid JSON found in response")
+            print("Not direct JSON, trying Ollama format")
+            try:
+                # Clean up markdown formatting if present (only for Ollama)
+                cleaned_response = response.strip()
+                if cleaned_response.startswith('```'):
+                    cleaned_response = re.sub(r'^```json\s*', '', cleaned_response)
+                    cleaned_response = re.sub(r'\s*```$', '', cleaned_response)
+                    print(f"Cleaned markdown from response: {cleaned_response}")
+                
+                # Try Ollama format (wrapped in response object)
+                response_data = json.loads(cleaned_response)
+                if "response" in response_data:
+                    response_text = response_data["response"]
+                    print(f"Found response field: {response_text}")
+                    # Find the first occurrence of a JSON object
+                    json_start = response_text.find('{')
+                    json_end = response_text.rfind('}') + 1
+                    if json_start != -1 and json_end != -1:
+                        cleaned_response = response_text[json_start:json_end]
+                        print(f"Extracted JSON: {cleaned_response}")
+                        action_json = json.loads(cleaned_response)
+                        print("Successfully parsed Ollama response")
+                    else:
+                        raise HTTPException(status_code=500, detail="No valid JSON found in Ollama response")
+                else:
+                    raise HTTPException(status_code=500, detail="No 'response' field in Ollama response")
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"Failed to parse Ollama response: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Invalid response format from LLM: {str(e)}")
+        
+        if not action_json:
+            raise HTTPException(status_code=500, detail="Failed to parse response in any format")
+            
+        print(f"Final parsed action JSON: {action_json}")
         
         # Handle cluster layer state
         if action_json.get("intent") == "CLUSTER":
