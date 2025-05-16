@@ -455,7 +455,7 @@ def query(nl_query: str = Query(..., description="Natural language query")):
     """Process a natural language input using intent-based routing."""
     try:
         intent = route_by_intent(nl_query)
-        print(f"Intent  I am in this one: {intent}")
+        print(f"Intent: {intent}")
         # Route to appropriate handler based on intent
         if intent == "FILTER":
             return JSONResponse(content=handle_data_query(nl_query))
