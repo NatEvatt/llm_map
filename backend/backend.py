@@ -273,23 +273,28 @@ def handle_map_action(nl_query: str) -> dict:
                     cleaned_response = re.sub(r'\s*```$', '', cleaned_response)
                     print(f"Cleaned markdown from response: {cleaned_response}")
                 
-                # Try Ollama format (wrapped in response object)
-                response_data = json.loads(cleaned_response)
-                if "response" in response_data:
-                    response_text = response_data["response"]
-                    print(f"Found response field: {response_text}")
-                    # Find the first occurrence of a JSON object
-                    json_start = response_text.find('{')
-                    json_end = response_text.rfind('}') + 1
-                    if json_start != -1 and json_end != -1:
-                        cleaned_response = response_text[json_start:json_end]
-                        print(f"Extracted JSON: {cleaned_response}")
-                        action_json = json.loads(cleaned_response)
-                        print("Successfully parsed Ollama response")
+                # Try to parse as direct JSON first (new Ollama format)
+                try:
+                    action_json = json.loads(cleaned_response)
+                    print("Successfully parsed as direct JSON (Ollama format)")
+                except json.JSONDecodeError:
+                    # If that fails, try the old Ollama format with response field
+                    response_data = json.loads(cleaned_response)
+                    if "response" in response_data:
+                        response_text = response_data["response"]
+                        print(f"Found response field: {response_text}")
+                        # Find the first occurrence of a JSON object
+                        json_start = response_text.find('{')
+                        json_end = response_text.rfind('}') + 1
+                        if json_start != -1 and json_end != -1:
+                            cleaned_response = response_text[json_start:json_end]
+                            print(f"Extracted JSON: {cleaned_response}")
+                            action_json = json.loads(cleaned_response)
+                            print("Successfully parsed Ollama response")
+                        else:
+                            raise HTTPException(status_code=500, detail="No valid JSON found in Ollama response")
                     else:
-                        raise HTTPException(status_code=500, detail="No valid JSON found in Ollama response")
-                else:
-                    raise HTTPException(status_code=500, detail="No 'response' field in Ollama response")
+                        raise HTTPException(status_code=500, detail="No 'response' field in Ollama response")
             except (json.JSONDecodeError, KeyError) as e:
                 print(f"Failed to parse Ollama response: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Invalid response format from LLM: {str(e)}")
