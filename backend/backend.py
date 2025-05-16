@@ -249,84 +249,98 @@ def natural_language_to_sql(nl_query):
     else:
         return "ERROR: SQL query not found in the response.", None
 
+def parse_azure_response(response: str) -> dict:
+    """Parse response from Azure OpenAI."""
+    try:
+        return json.loads(response)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Failed to parse Azure OpenAI response as JSON")
+
+def parse_ollama_response(response: str) -> dict:
+    """Parse response from Ollama."""
+    try:
+        # Clean up markdown formatting if present
+        cleaned_response = response.strip()
+        if cleaned_response.startswith('```'):
+            cleaned_response = re.sub(r'^```json\s*', '', cleaned_response)
+            cleaned_response = re.sub(r'\s*```$', '', cleaned_response)
+        
+        # Try to parse as direct JSON first
+        try:
+            return json.loads(cleaned_response)
+        except json.JSONDecodeError:
+            # Try the old Ollama format with response field
+            response_data = json.loads(cleaned_response)
+            if "response" not in response_data:
+                raise HTTPException(status_code=500, detail="No 'response' field in Ollama response")
+            
+            response_text = response_data["response"]
+            # Find the first occurrence of a JSON object
+            json_start = response_text.find('{')
+            json_end = response_text.rfind('}') + 1
+            if json_start == -1 or json_end == -1:
+                raise HTTPException(status_code=500, detail="No valid JSON found in Ollama response")
+            
+            return json.loads(response_text[json_start:json_end])
+    except (json.JSONDecodeError, KeyError) as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse Ollama response: {str(e)}")
+
+def handle_cluster_action(action_json: dict) -> dict:
+    """Handle cluster-related actions and update cluster state."""
+    if action_json.get("intent") != "CLUSTER":
+        return action_json
+        
+    layer = action_json.get("parameters", {}).get("layer")
+    cluster_action = action_json.get("parameters", {}).get("action")
+    
+    if cluster_action == "ADD":
+        CLUSTER_STATE[layer] = True
+    elif cluster_action == "REMOVE":
+        CLUSTER_STATE[layer] = False
+        action_json["restore_original"] = {
+            "layer": layer,
+            "action": "ADD"
+        }
+    
+    return action_json
+
 def handle_map_action(nl_query: str) -> dict:
     """Process a map action using the LLM."""
     start_time = time.time()
     prompt = get_action_prompt(nl_query)
     response = llm_service.generate_response(prompt)
 
-    if response:
-        print(f"Raw LLM response: {response}")
-        action_json = None
-        
-        # Try Azure format first (direct JSON)
-        try:
-            action_json = json.loads(response)
-            print("Successfully parsed as direct JSON (Azure format)")
-        except json.JSONDecodeError:
-            print("Not direct JSON, trying Ollama format")
-            try:
-                # Clean up markdown formatting if present (only for Ollama)
-                cleaned_response = response.strip()
-                if cleaned_response.startswith('```'):
-                    cleaned_response = re.sub(r'^```json\s*', '', cleaned_response)
-                    cleaned_response = re.sub(r'\s*```$', '', cleaned_response)
-                    print(f"Cleaned markdown from response: {cleaned_response}")
-                
-                # Try to parse as direct JSON first (new Ollama format)
-                try:
-                    action_json = json.loads(cleaned_response)
-                    print("Successfully parsed as direct JSON (Ollama format)")
-                except json.JSONDecodeError:
-                    # If that fails, try the old Ollama format with response field
-                    response_data = json.loads(cleaned_response)
-                    if "response" in response_data:
-                        response_text = response_data["response"]
-                        print(f"Found response field: {response_text}")
-                        # Find the first occurrence of a JSON object
-                        json_start = response_text.find('{')
-                        json_end = response_text.rfind('}') + 1
-                        if json_start != -1 and json_end != -1:
-                            cleaned_response = response_text[json_start:json_end]
-                            print(f"Extracted JSON: {cleaned_response}")
-                            action_json = json.loads(cleaned_response)
-                            print("Successfully parsed Ollama response")
-                        else:
-                            raise HTTPException(status_code=500, detail="No valid JSON found in Ollama response")
-                    else:
-                        raise HTTPException(status_code=500, detail="No 'response' field in Ollama response")
-            except (json.JSONDecodeError, KeyError) as e:
-                print(f"Failed to parse Ollama response: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Invalid response format from LLM: {str(e)}")
-        
-        if not action_json:
-            raise HTTPException(status_code=500, detail="Failed to parse response in any format")
-            
-        print(f"Final parsed action JSON: {action_json}")
-        
-        # Handle cluster layer state
-        if action_json.get("intent") == "CLUSTER":
-            layer = action_json.get("parameters", {}).get("layer")
-            cluster_action = action_json.get("parameters", {}).get("action")
-            
-            if cluster_action == "ADD":
-                CLUSTER_STATE[layer] = True
-            elif cluster_action == "REMOVE":
-                CLUSTER_STATE[layer] = False
-                action_json["restore_original"] = {
-                    "layer": layer,
-                    "action": "ADD"
-                }
-        end_time = time.time()
-        print(f"Map action processing took {end_time - start_time:.2f} seconds")
-        
-        # Use the type from the LLM response
-        return {
-            "type": action_json.get("type", "action"),  # Default to "action" if not specified
-            "action": action_json
-        }
-    else:
-        raise HTTPException(status_code=500, detail="Failed to process action with LLM")
+    if not response:
+        raise HTTPException(status_code=500, detail="Failed to get response from LLM")
+
+    print(f"Raw LLM response: {response}")
+    
+    # Parse response based on provider
+    try:
+        if LLM_PROVIDER == 'azure':
+            action_json = parse_azure_response(response)
+        else:
+            action_json = parse_ollama_response(response)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse LLM response: {str(e)}")
+
+    if not action_json:
+        raise HTTPException(status_code=500, detail="Failed to parse response in any format")
+    
+    print(f"Final parsed action JSON: {action_json}")
+    
+    # Handle cluster actions if present
+    action_json = handle_cluster_action(action_json)
+    
+    end_time = time.time()
+    print(f"Map action processing took {end_time - start_time:.2f} seconds")
+    
+    return {
+        "type": action_json.get("type", "action"),  # Default to "action" if not specified
+        "action": action_json
+    }
 
 def handle_data_query(nl_query: str) -> dict:
     """Process a data query using the LLM and PostGIS."""
