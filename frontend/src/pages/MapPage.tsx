@@ -3,6 +3,7 @@ import Map from '../components/Map';
 import SidePanel from '../components/sidepanel/SidePanel';
 import { ApiCalls } from '../utils/apiCalls';
 import MAPTILER_API_KEY from '../config';
+import '../styles/MapPage.css';
 
 const MapPage: React.FC = () => {
   const [allFeatures, setAllFeatures] = useState<Record<string, any> | null>(
