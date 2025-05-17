@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Map from '../components/Map';
 import SidePanel from '../components/sidepanel/SidePanel';
 import { ApiCalls } from '../utils/apiCalls';
@@ -23,6 +23,8 @@ const MapPage: React.FC = () => {
     cycle_paths: true,
   });
   const [actionResponse, setActionResponse] = useState<any>(null);
+  const [customLayers, setCustomLayers] = useState<Record<string, any>>({});
+  const [isDragging, setIsDragging] = useState(false);
 
   const layerNames = ['parks', 'fountains', 'cycle_paths'];
 
@@ -40,13 +42,78 @@ const MapPage: React.FC = () => {
     }));
   };
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const geojsonFiles = files.filter(
+      (file) =>
+        file.name.toLowerCase().endsWith('.geojson') ||
+        file.name.toLowerCase().endsWith('.json'),
+    );
+
+    if (geojsonFiles.length === 0) {
+      alert('Please drop a valid GeoJSON file');
+      return;
+    }
+
+    for (const file of geojsonFiles) {
+      try {
+        const result = await ApiCalls.uploadGeoJson(file);
+        const { layer_name, geojson } = result;
+
+        // Add the new layer to customLayers
+        setCustomLayers((prev) => ({
+          ...prev,
+          [layer_name]: geojson,
+        }));
+
+        // Add the layer to activeLayers
+        setActiveLayers((prev) => ({
+          ...prev,
+          [layer_name]: true,
+        }));
+
+        // Add the layer to geoJsonData
+        setGeoJsonData((prev) => ({
+          ...prev,
+          [layer_name]: geojson,
+        }));
+
+        // Add the layer to allFeatures
+        setAllFeatures((prev) => ({
+          ...prev,
+          [layer_name]: geojson,
+        }));
+      } catch (error) {
+        console.error('Error uploading GeoJSON:', error);
+        alert(`Failed to upload ${file.name}`);
+      }
+    }
+  }, []);
+
   const getLayerInfo = (): Array<{
     name: string;
     isActive: boolean;
     hasFilter: boolean;
     featureCount: number;
   }> => {
-    return layerNames.map((name) => ({
+    const allLayers = [...layerNames, ...Object.keys(customLayers)];
+    return allLayers.map((name) => ({
       name,
       isActive: activeLayers[name],
       hasFilter:
@@ -152,7 +219,12 @@ const MapPage: React.FC = () => {
   }, [actionResponse]);
 
   return (
-    <div className="container">
+    <div
+      className={`container ${isDragging ? 'drag-over' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="column left">
         <SidePanel
           message={message}
