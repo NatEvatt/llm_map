@@ -1,7 +1,9 @@
 fastapi==0.109.2
 psycopg2-binary==2.9.9
 requests==2.31.0
-shapely
+numpy<2.0.0
+shapely==2.0.2
 geojson==3.2.0
 uvicorn==0.27.1
 openai==0.28.1
+python-multipart

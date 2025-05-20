@@ -84,4 +84,20 @@ export class ApiCalls {
     }
     return response.json();
   }
+
+  static async uploadGeoJson(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${ApiCalls.getAPIUrl()}/upload-geojson`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to upload GeoJSON file');
+    }
+
+    return response.json();
+  }
 }

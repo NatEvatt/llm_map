@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import JSONResponse
-from backend_constants import LAYER_COLUMNS
+from backend_constants import LAYER_COLUMNS, DB_CONFIG
 import psycopg2
 import json
 import requests
@@ -13,6 +13,11 @@ from typing import Optional, Dict, Any, Literal
 import os
 import time
 import openai
+from shapely.geometry import shape
+from shapely.wkb import dumps as wkb_dumps
+from upload_utils import process_geojson_upload
+from psycopg2.extras import RealDictCursor
+from prompts import get_sql_prompt, get_action_prompt, get_intent_prompt, get_help_text
 
 app = FastAPI()
 
@@ -489,9 +494,155 @@ def get_park_popup_properties(layer: str, park_id: int):
     else:
         return JSONResponse(content={"error": "Park not found."})
 
+def create_table_for_geojson(cur, layer_name: str, features: list) -> None:
+    """Create a new table for the GeoJSON data with dynamic columns based on properties."""
+    # Get all unique property keys from all features
+    all_properties = set()
+    for feature in features:
+        if "properties" in feature:
+            all_properties.update(feature["properties"].keys())
+    
+    # Create the table with dynamic columns
+    columns = [
+        "id SERIAL PRIMARY KEY",
+        "geom GEOMETRY(GEOMETRY, 4326)"
+    ]
+    
+    # Add columns for each property
+    for prop in all_properties:
+        # Determine column type based on property value
+        sample_value = next(
+            (f["properties"][prop] for f in features if prop in f.get("properties", {})),
+            None
+        )
+        
+        if isinstance(sample_value, bool):
+            col_type = "BOOLEAN"
+        elif isinstance(sample_value, int):
+            col_type = "INTEGER"
+        elif isinstance(sample_value, float):
+            col_type = "DOUBLE PRECISION"
+        else:
+            col_type = "TEXT"
+            
+        columns.append(f'"{prop}" {col_type}')
+    
+    # Create the table
+    create_table_sql = f"""
+    CREATE TABLE IF NOT EXISTS layers.{layer_name} (
+        {', '.join(columns)}
+    );
+    """
+    cur.execute(create_table_sql)
+    
+    # Create spatial index
+    cur.execute(f"""
+    CREATE INDEX IF NOT EXISTS idx_{layer_name}_geom 
+    ON layers.{layer_name} USING GIST(geom);
+    """)
+
+def insert_feature(cur, layer_name: str, feature: dict) -> None:
+    """Insert a feature into the dynamically created table."""
+    if "properties" not in feature:
+        feature["properties"] = {}
+    
+    # Convert geometry to WKB
+    shapely_geom = shape(feature["geometry"])
+    wkb_geom = wkb_dumps(shapely_geom, hex=True)
+    
+    # Get all columns from the table
+    cur.execute(f"""
+    SELECT column_name 
+    FROM information_schema.columns 
+    WHERE table_schema = 'layers' 
+    AND table_name = '{layer_name}'
+    ORDER BY ordinal_position;
+    """)
+    columns = [row[0] for row in cur.fetchall()]
+    
+    # Prepare the insert statement
+    placeholders = []
+    values = []
+    for col in columns:
+        if col == 'id':
+            continue
+        elif col == 'geom':
+            placeholders.append("ST_GeomFromWKB(%s::geometry, 4326)")
+            values.append(wkb_geom)
+        else:
+            placeholders.append("%s")
+            values.append(feature["properties"].get(col))
+    
+    # Execute the insert
+    insert_sql = f"""
+    INSERT INTO layers.{layer_name} 
+    ({', '.join(f'"{col}"' for col in columns if col != 'id')})
+    VALUES ({', '.join(placeholders)})
+    """
+    cur.execute(insert_sql, values)
+
+@app.post("/upload-geojson")
+async def upload_geojson(file: UploadFile = File(...)):
+    """Handle GeoJSON file upload and save to database."""
+    # Add a 5-second delay to test the frontend spinner
+    return await process_geojson_upload(file)
+
 @app.get("/get-layer-geojson")
 def get_layer_geojson(layer: str):
-    # Validate the requested layer
+    # Check if it's a custom layer
+    if layer.startswith("custom_"):
+        try:
+            conn = psycopg2.connect(**DB_CONFIG)
+            cur = conn.cursor()
+            
+            # Get all columns except id and geom
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = 'layers' 
+                AND table_name = %s
+                AND column_name NOT IN ('id', 'geom')
+                ORDER BY ordinal_position;
+            """, (layer,))
+            property_columns = [row[0] for row in cur.fetchall()]
+            
+            # Query the custom layer
+            cur.execute(f"""
+                SELECT 
+                    id,
+                    {', '.join(f'"{col}"' for col in property_columns)},
+                    ST_AsGeoJSON(geom)::json as geometry
+                FROM layers.{layer}
+            """)
+            
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            
+            # Convert rows to GeoJSON features
+            features = []
+            for row in rows:
+                properties = {
+                    "id": row[0]
+                }
+                # Add all other properties
+                for i, col in enumerate(property_columns, start=1):
+                    properties[col] = row[i]
+                
+                feature = Feature(
+                    geometry=row[-1],  # Last column is the geometry
+                    properties=properties
+                )
+                features.append(feature)
+            
+            # Create a GeoJSON FeatureCollection
+            collection = FeatureCollection(features)
+            return JSONResponse(content=collection)
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error fetching custom layer: {str(e)}")
+    
+    # Handle regular layers as before
     if layer not in LAYER_COLUMNS:
         return JSONResponse(content={"error": f"Layer '{layer}' not found."}, status_code=400)
 
@@ -752,3 +903,62 @@ def route_by_intent(nl_query: str) -> str:
         print(f"Error determining intent: {str(e)}")
         # Default to ACTION on error
         return "ACTION"
+
+@app.post("/api/query")
+async def query_database(query: str):
+    """Query the database using natural language."""
+    try:
+        # Get the SQL prompt
+        prompt = get_sql_prompt(query)
+        
+        # Get the SQL query from the LLM
+        sql_query = get_llm_response(prompt)
+        
+        # Execute the query
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql_query)
+                results = cur.fetchall()
+                
+        return {"results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/action")
+async def handle_action(action: str):
+    """Handle map actions using natural language."""
+    try:
+        # Get the action prompt
+        prompt = get_action_prompt(action)
+        
+        # Get the action from the LLM
+        response = get_llm_response(prompt)
+        
+        # Parse the response as JSON
+        try:
+            action_data = json.loads(response)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail="Invalid response from LLM")
+            
+        return action_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/intent")
+async def get_intent(query: str):
+    """Get the intent of a query."""
+    try:
+        # Get the intent prompt
+        prompt = get_intent_prompt(query)
+        
+        # Get the intent from the LLM
+        intent = get_llm_response(prompt)
+        
+        return {"intent": intent.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/help")
+async def get_help():
+    """Get help text for available actions."""
+    return {"help_text": get_help_text()}
