@@ -1,35 +1,90 @@
+import psycopg2
+from backend_constants import DB_CONFIG
+import re
+
+def extract_relevant_tables(nl_query: str) -> list:
+    """Use a simple pattern matching to identify potential table names from the query."""
+    # Common table names and their variations
+    table_patterns = {
+        'parks': r'\b(?:park|parks)\b',
+        'fountains': r'\b(?:fountain|fountains)\b',
+        'cycle_paths': r'\b(?:cycle\s*path|cycle\s*paths|bike\s*path|bike\s*paths)\b'
+    }
+    
+    # Find all mentioned tables
+    mentioned_tables = []
+    for table, pattern in table_patterns.items():
+        if re.search(pattern, nl_query.lower()):
+            mentioned_tables.append(table)
+    
+    # If no tables are explicitly mentioned, return all tables
+    # This handles queries like "show me everything" or "what's available"
+    if not mentioned_tables:
+        return list(table_patterns.keys())
+    
+    return mentioned_tables
+
+def get_table_schema(tables: list = None):
+    """Get schema information for specified tables in the layers schema."""
+    conn = psycopg2.connect(**DB_CONFIG)
+    cur = conn.cursor()
+    
+    if tables is None:
+        # If no tables specified, get all tables in layers schema
+        cur.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'layers'
+            ORDER BY table_name;
+        """)
+        tables = [row[0] for row in cur.fetchall()]
+    
+    # Get column information for each table
+    schema_info = {}
+    for table in tables:
+        cur.execute("""
+            SELECT 
+                column_name,
+                data_type,
+                is_nullable,
+                column_default
+            FROM information_schema.columns 
+            WHERE table_schema = 'layers' 
+            AND table_name = %s
+            ORDER BY ordinal_position;
+        """, (table,))
+        
+        columns = []
+        for col in cur.fetchall():
+            col_name, data_type, is_nullable, default = col
+            nullable = "NULL" if is_nullable == "YES" else "NOT NULL"
+            columns.append(f"`{col_name}` ({data_type}, {nullable})")
+        
+        schema_info[table] = columns
+    
+    cur.close()
+    conn.close()
+    print('schema_info:', schema_info)
+    return schema_info
+
 def get_sql_prompt(nl_query: str) -> str:
     """Return the prompt for the parks, fountains, and cycle_path tables."""
-    return f"""
+    # Extract relevant tables from the query
+    relevant_tables = extract_relevant_tables(nl_query)
+    schema_info = get_table_schema(relevant_tables)
+    
+    # Build the schema section of the prompt
+    schema_section = "### Database Schema\nThe database contains the following tables:\n\n"
+    for table_name, columns in schema_info.items():
+        schema_section += f"1. `layers.{table_name}`:\n"
+        for column in columns:
+            schema_section += f"   - {column}\n"
+        schema_section += "\n"
+    
+    prompt = f"""
     Convert the following natural language query into a valid SQL statement for a PostGIS database.
     
-    ### Database Schema
-    The database contains the following tables:
-
-    1. `layers.parks`:
-       - `id` (INT4, NOT NULL)
-       - `osm_id` (TEXT, NULL)
-       - `name` (TEXT, NULL)
-       - `operator` (TEXT, NULL)
-       - `note` (TEXT, NULL)
-       - `geom` (GEOMETRY, NULL)
-
-    2. `layers.fountains`:
-       - `id` (INT4, NOT NULL)
-       - `osm_id` (TEXT, NULL)
-       - `name` (TEXT, NULL)
-       - `note` (TEXT, NULL)
-       - `geom` (GEOMETRY, NULL)
-
-    3. `layers.cycle_paths`:
-       - `id` (INT4, NOT NULL)
-       - `osm_id` (TEXT, NULL)
-       - `name` (TEXT, NULL)
-       - `cycleway` (TEXT, NULL)
-       - `highway` (TEXT, NULL)
-       - `surface` (TEXT, NULL)
-       - `geom` (GEOMETRY, NULL)
-
+    {schema_section}
     ### Important Notes
     - There are NO foreign key relationships between tables (no park_id, fountain_id, etc.)
     - To find relationships between features (e.g., fountains inside parks), use spatial functions like ST_Within
@@ -110,6 +165,7 @@ def get_sql_prompt(nl_query: str) -> str:
 
     SQL:
     """
+    return prompt
 
 def get_action_prompt(action: str) -> str:
     """Return the prompt for the action."""
