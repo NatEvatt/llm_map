@@ -72,8 +72,10 @@ const MapPage: React.FC = () => {
       return;
     }
 
-    for (const file of geojsonFiles) {
-      try {
+    setLoading(true); // Set loading to true before processing files
+
+    try {
+      for (const file of geojsonFiles) {
         const result = await ApiCalls.uploadGeoJson(file);
         const { layer_name, geojson } = result;
 
@@ -100,10 +102,12 @@ const MapPage: React.FC = () => {
           ...prev,
           [layer_name]: geojson,
         }));
-      } catch (error) {
-        console.error('Error uploading GeoJSON:', error);
-        alert(`Failed to upload ${file.name}`);
       }
+    } catch (error) {
+      console.error('Error uploading GeoJSON:', error);
+      alert(`Failed to upload ${geojsonFiles[0].name}`);
+    } finally {
+      setLoading(false); // Set loading to false after processing is complete
     }
   }, []);
 
