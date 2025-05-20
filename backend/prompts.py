@@ -8,14 +8,17 @@ def extract_relevant_tables(nl_query: str) -> list:
     table_patterns = {
         'parks': r'\b(?:park|parks)\b',
         'fountains': r'\b(?:fountain|fountains)\b',
-        'cycle_paths': r'\b(?:cycle\s*path|cycle\s*paths|bike\s*path|bike\s*paths)\b'
+        'cycle_paths': r'\b(?:cycle\s*path|cycle\s*paths|bike\s*path|bike\s*paths)\b',
+        'postboxes': r'\b(?:postbox|postboxes)\b'  # Add postboxes pattern
     }
     
     # Find all mentioned tables
     mentioned_tables = []
     for table, pattern in table_patterns.items():
         if re.search(pattern, nl_query.lower()):
+            # For any mentioned table, try both the regular and custom version
             mentioned_tables.append(table)
+            mentioned_tables.append(f"custom_{table}")
     
     # If no tables are explicitly mentioned, return all tables
     # This handles queries like "show me everything" or "what's available"
@@ -42,6 +45,11 @@ def get_table_schema(tables: list = None):
     # Get column information for each table
     schema_info = {}
     for table in tables:
+        # Check if this is a custom layer
+        is_custom = table.startswith('custom_')
+        base_table_name = table[7:] if is_custom else table  # Remove 'custom_' prefix if present
+        
+        # Query the exact table name provided
         cur.execute("""
             SELECT 
                 column_name,
@@ -60,7 +68,8 @@ def get_table_schema(tables: list = None):
             nullable = "NULL" if is_nullable == "YES" else "NOT NULL"
             columns.append(f"`{col_name}` ({data_type}, {nullable})")
         
-        schema_info[table] = columns
+        if columns:  # Only add to schema_info if we found columns
+            schema_info[base_table_name] = columns
     
     cur.close()
     conn.close()
@@ -90,6 +99,7 @@ def get_sql_prompt(nl_query: str) -> str:
     - To find relationships between features (e.g., fountains inside parks), use spatial functions like ST_Within
     - For counting features inside other features, use subqueries with spatial joins
     - When counting features inside other features, use GROUP BY on the containing feature's ID
+    - For custom layers, use the table name without the 'custom_' prefix in the SQL query
 
     ### Query Requirements
     - Ensure **all string comparisons are case-insensitive**.
