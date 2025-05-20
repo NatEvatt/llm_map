@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Query, HTTPException, UploadFile, File
+from fastapi import FastAPI, Query, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import JSONResponse
-from backend_constants import LAYER_COLUMNS
+from backend_constants import LAYER_COLUMNS, DB_CONFIG
 import psycopg2
 import json
 import requests
@@ -16,6 +16,8 @@ import openai
 from shapely.geometry import shape
 from shapely.wkb import dumps as wkb_dumps
 from upload_utils import process_geojson_upload
+from psycopg2.extras import RealDictCursor
+from prompts import get_sql_prompt, get_action_prompt, get_intent_prompt, get_help_text
 
 app = FastAPI()
 
@@ -901,3 +903,62 @@ def route_by_intent(nl_query: str) -> str:
         print(f"Error determining intent: {str(e)}")
         # Default to ACTION on error
         return "ACTION"
+
+@app.post("/api/query")
+async def query_database(query: str):
+    """Query the database using natural language."""
+    try:
+        # Get the SQL prompt
+        prompt = get_sql_prompt(query)
+        
+        # Get the SQL query from the LLM
+        sql_query = get_llm_response(prompt)
+        
+        # Execute the query
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql_query)
+                results = cur.fetchall()
+                
+        return {"results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/action")
+async def handle_action(action: str):
+    """Handle map actions using natural language."""
+    try:
+        # Get the action prompt
+        prompt = get_action_prompt(action)
+        
+        # Get the action from the LLM
+        response = get_llm_response(prompt)
+        
+        # Parse the response as JSON
+        try:
+            action_data = json.loads(response)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail="Invalid response from LLM")
+            
+        return action_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/intent")
+async def get_intent(query: str):
+    """Get the intent of a query."""
+    try:
+        # Get the intent prompt
+        prompt = get_intent_prompt(query)
+        
+        # Get the intent from the LLM
+        intent = get_llm_response(prompt)
+        
+        return {"intent": intent.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/help")
+async def get_help():
+    """Get help text for available actions."""
+    return {"help_text": get_help_text()}
