@@ -15,7 +15,7 @@ import time
 import openai
 from shapely.geometry import shape
 from shapely.wkb import dumps as wkb_dumps
-import uuid
+from upload_utils import process_geojson_upload
 
 app = FastAPI()
 
@@ -582,56 +582,8 @@ def insert_feature(cur, layer_name: str, feature: dict) -> None:
 @app.post("/upload-geojson")
 async def upload_geojson(file: UploadFile = File(...)):
     """Handle GeoJSON file upload and save to database."""
-    try:
-        # Read the file content
-        content = await file.read()
-        geojson_data = json.loads(content)
-        
-        # Validate that it's a valid GeoJSON
-        if not isinstance(geojson_data, dict):
-            raise HTTPException(status_code=400, detail="Invalid GeoJSON format")
-            
-        if geojson_data.get("type") != "FeatureCollection":
-            raise HTTPException(status_code=400, detail="Only FeatureCollection type is supported")
-            
-        if not isinstance(geojson_data.get("features"), list):
-            raise HTTPException(status_code=400, detail="Invalid features array in GeoJSON")
-        
-        # Generate a unique layer name based on the filename and a UUID
-        base_name = file.filename.split('.')[0].lower()
-        layer_name = f"custom_{base_name}_{str(uuid.uuid4())[:8]}"
-        
-        # Connect to the database
-        conn = psycopg2.connect(**DB_CONFIG)
-        cur = conn.cursor()
-        
-        try:
-            # Create the table for this GeoJSON
-            create_table_for_geojson(cur, layer_name, geojson_data["features"])
-            
-            # Insert each feature
-            for feature in geojson_data["features"]:
-                insert_feature(cur, layer_name, feature)
-            
-            conn.commit()
-            
-            # Return the layer name and the original GeoJSON
-            return {
-                "layer_name": layer_name,
-                "geojson": geojson_data
-            }
-            
-        except Exception as e:
-            conn.rollback()
-            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-        finally:
-            cur.close()
-            conn.close()
-            
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON format")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # Add a 5-second delay to test the frontend spinner
+    return await process_geojson_upload(file)
 
 @app.get("/get-layer-geojson")
 def get_layer_geojson(layer: str):
