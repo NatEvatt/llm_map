@@ -2,6 +2,7 @@ services:
   db:
     build: ./database
     container_name: db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -14,6 +15,7 @@ services:
   backend:
     build: ./backend
     container_name: backend
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -34,6 +36,7 @@ services:
   frontend:
     build: ./frontend
     container_name: frontend
+    restart: unless-stopped
     ports:
       - "$FRONTEND_EXTERNAL_PORT:9001"
     environment:
